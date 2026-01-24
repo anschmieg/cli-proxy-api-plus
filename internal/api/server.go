@@ -354,17 +354,33 @@ func (s *Server) setupRoutes() {
 		v1beta.GET("/models/*action", geminiHandlers.GeminiGetHandler)
 	}
 
-	// Root endpoint
-	s.engine.GET("/", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{
-			"message": "CLI Proxy API Server",
-			"endpoints": []string{
-				"POST /v1/chat/completions",
-				"POST /v1/completions",
-				"GET /v1/models",
-			},
+	// Serve custom UI if available
+	staticDir := "static"
+	if _, err := os.Stat(staticDir); err == nil {
+		s.engine.Static("/assets", filepath.Join(staticDir, "assets"))
+		s.engine.StaticFile("/favicon.ico", filepath.Join(staticDir, "favicon.ico"))
+		// Serve index.html for root and unknown routes (SPA support)
+		s.engine.NoRoute(func(c *gin.Context) {
+			if strings.HasPrefix(c.Request.URL.Path, "/v1") || strings.HasPrefix(c.Request.URL.Path, "/v0") {
+				c.Status(http.StatusNotFound)
+				return
+			}
+			c.File(filepath.Join(staticDir, "index.html"))
 		})
-	})
+		log.Infof("Serving custom UI from %s", staticDir)
+	} else {
+		// Root endpoint (legacy)
+		s.engine.GET("/", func(c *gin.Context) {
+			c.JSON(http.StatusOK, gin.H{
+				"message": "CLI Proxy API Server",
+				"endpoints": []string{
+					"POST /v1/chat/completions",
+					"POST /v1/completions",
+					"GET /v1/models",
+				},
+			})
+		})
+	}
 
 	// Event logging endpoint - handles Claude Code telemetry requests
 	// Returns 200 OK to prevent 404 errors in logs
