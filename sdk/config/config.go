@@ -22,6 +22,8 @@ type PayloadRule = internalconfig.PayloadRule
 type PayloadModelRule = internalconfig.PayloadModelRule
 
 type GeminiKey = internalconfig.GeminiKey
+type AIStudioKey = internalconfig.AIStudioKey
+type AIStudioModel = internalconfig.AIStudioModel
 type CodexKey = internalconfig.CodexKey
 type ClaudeKey = internalconfig.ClaudeKey
 type VertexCompatKey = internalconfig.VertexCompatKey
