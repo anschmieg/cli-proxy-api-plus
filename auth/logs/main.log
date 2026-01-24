@@ -1,0 +1,30 @@
+[2026-01-24 13:39:29] [--------] [info ] [main.go:445] CLIProxyAPI Version: dev, Commit: none, BuiltAt: unknown
+[2026-01-24 13:39:29] [--------] [info ] [refresh_manager.go:70] refresh manager: initialized with base directory /Users/adrian/Projects/ai-gateway/cli-proxy-api-plus/auth
+[2026-01-24 13:39:29] [--------] [info ] [refresh_manager.go:93] refresh manager: background refresh started
+[2026-01-24 13:39:29] [--------] [info ] [server.go:299] Kiro OAuth Web routes registered at /v0/oauth/kiro/*
+[2026-01-24 13:39:29] [--------] [info ] [clients.go:104] full client load complete - 0 clients (0 auth files + 0 Gemini API keys + 0 Vertex API keys + 0 Claude API keys + 0 Codex keys + 0 OpenAI-compat)
+[2026-01-24 13:39:29] [--------] [info ] [service.go:605] file watcher started for config and auth directory changes
+[2026-01-24 13:39:29] [--------] [info ] [service.go:611] core auth auto-refresh started (interval=15m0s)
+[2026-01-24 13:44:22] [--------] [info ] [main.go:445] CLIProxyAPI Version: dev, Commit: none, BuiltAt: unknown
+[2026-01-24 13:44:22] [--------] [info ] [refresh_manager.go:70] refresh manager: initialized with base directory /Users/adrian/Projects/ai-gateway/cli-proxy-api-plus/auth
+[2026-01-24 13:44:22] [--------] [info ] [refresh_manager.go:93] refresh manager: background refresh started
+[2026-01-24 13:44:22] [--------] [info ] [server.go:299] Kiro OAuth Web routes registered at /v0/oauth/kiro/*
+[2026-01-24 13:44:22] [--------] [info ] [clients.go:104] full client load complete - 0 clients (0 auth files + 0 Gemini API keys + 0 Vertex API keys + 0 Claude API keys + 0 Codex keys + 0 OpenAI-compat)
+[2026-01-24 13:44:22] [--------] [info ] [service.go:605] file watcher started for config and auth directory changes
+[2026-01-24 13:44:22] [--------] [info ] [service.go:611] core auth auto-refresh started (interval=15m0s)
+[2026-01-24 13:45:12] [--------] [info ] [refresh_manager.go:114] refresh manager: background refresh stopped
+[2026-01-24 13:56:38] [--------] [info ] [main.go:445] CLIProxyAPI Version: dev, Commit: none, BuiltAt: unknown
+[2026-01-24 13:57:15] [--------] [error] [github_copilot_login.go:33] GitHub Copilot authentication failed: github-copilot: failed to verify Copilot access - you may not have an active Copilot subscription: token_exchange_failed: Failed to exchange device code for access token (caused by: status 403: {"can_signup_for_limited":false,"error_details":{"url":"https://support.github.com?editor={EDITOR}","message":"Contact Support. You are currently logged in as anschmieg.","title":"Contact Support","notification_id":"feature_flag_blocked"},"message":"Resource not accessible by integration. For more on scraping GitHub and how it may affect your rights, please review our Terms of Service (https://docs.github.com/en/site-policy/github-terms/github-terms-of-service)"})
+[2026-01-24 14:04:38] [--------] [info ] [main.go:445] CLIProxyAPI Version: dev, Commit: none, BuiltAt: unknown
+[2026-01-24 14:04:38] [--------] [info ] [refresh_manager.go:70] refresh manager: initialized with base directory /Users/adrian/Projects/ai-gateway/cli-proxy-api-plus/auth
+[2026-01-24 14:04:38] [--------] [info ] [refresh_manager.go:93] refresh manager: background refresh started
+[2026-01-24 14:04:38] [--------] [info ] [server.go:299] Kiro OAuth Web routes registered at /v0/oauth/kiro/*
+[2026-01-24 14:04:38] [--------] [info ] [clients.go:104] full client load complete - 0 clients (0 auth files + 0 Gemini API keys + 0 Vertex API keys + 0 Claude API keys + 0 Codex keys + 0 OpenAI-compat)
+[2026-01-24 14:04:38] [--------] [info ] [service.go:605] file watcher started for config and auth directory changes
+[2026-01-24 14:04:38] [--------] [info ] [service.go:611] core auth auto-refresh started (interval=15m0s)
+[2026-01-24 14:28:46] [--------] [info ] [main.go:445] CLIProxyAPI Version: dev, Commit: none, BuiltAt: unknown
+[2026-01-24 14:29:08] [--------] [error] [github_copilot_login.go:33] GitHub Copilot authentication failed: github-copilot: failed to verify Copilot access - you may not have an active Copilot subscription: token_exchange_failed: Failed to exchange device code for access token (caused by: status 403: {"can_signup_for_limited":false,"error_details":{"url":"https://support.github.com?editor={EDITOR}","message":"Contact Support. You are currently logged in as anschmieg.","title":"Contact Support","notification_id":"feature_flag_blocked"},"message":"Resource not accessible by integration. For more on scraping GitHub and how it may affect your rights, please review our Terms of Service (https://docs.github.com/en/site-policy/github-terms/github-terms-of-service)"})
+[2026-01-24 14:29:38] [--------] [info ] [main.go:445] CLIProxyAPI Version: dev, Commit: none, BuiltAt: unknown
+[2026-01-24 14:29:53] [--------] [info ] [main.go:445] CLIProxyAPI Version: dev, Commit: none, BuiltAt: unknown
+[2026-01-24 14:30:15] [--------] [error] [github_copilot_login.go:33] GitHub Copilot authentication failed: github-copilot: failed to verify Copilot access - you may not have an active Copilot subscription: token_exchange_failed: Failed to exchange device code for access token (caused by: status 403: {"can_signup_for_limited":false,"error_details":{"url":"https://support.github.com?editor={EDITOR}","message":"Contact Support. You are currently logged in as anschmieg.","title":"Contact Support","notification_id":"feature_flag_blocked"},"message":"Resource not accessible by integration. For more on scraping GitHub and how it may affect your rights, please review our Terms of Service (https://docs.github.com/en/site-policy/github-terms/github-terms-of-service)"})
+[2026-01-24 14:44:38] [--------] [error] [github_copilot_login.go:33] GitHub Copilot authentication failed: github-copilot: Authentication timed out. Please try again.
