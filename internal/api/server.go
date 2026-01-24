@@ -578,6 +578,15 @@ func (s *Server) registerManagementRoutes() {
 		mgmt.PATCH("/gemini-api-key", s.mgmt.PatchGeminiKey)
 		mgmt.DELETE("/gemini-api-key", s.mgmt.DeleteGeminiKey)
 
+		mgmt.GET("/ai-studio-key", s.mgmt.GetAIStudioKeys)
+		mgmt.PUT("/ai-studio-key", s.mgmt.PutAIStudioKeys)
+		mgmt.PATCH("/ai-studio-key", s.mgmt.PatchAIStudioKey)
+		mgmt.DELETE("/ai-studio-key", s.mgmt.DeleteAIStudioKey)
+
+		mgmt.GET("/rate-limit", s.mgmt.GetRateLimit)
+		mgmt.PUT("/rate-limit", s.mgmt.PutRateLimit)
+		mgmt.PATCH("/rate-limit", s.mgmt.PatchRateLimit)
+
 		mgmt.GET("/logs", s.mgmt.GetLogs)
 		mgmt.DELETE("/logs", s.mgmt.DeleteLogs)
 		mgmt.GET("/request-error-logs", s.mgmt.GetRequestErrorLogs)
