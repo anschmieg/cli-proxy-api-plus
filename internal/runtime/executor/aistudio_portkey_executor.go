@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"strings"
 
 	"github.com/router-for-me/CLIProxyAPI/v6/internal/config"
 	"github.com/router-for-me/CLIProxyAPI/v6/internal/util"
@@ -93,7 +92,7 @@ func (e *AIStudioPortkeyExecutor) Execute(ctx context.Context, auth *cliproxyaut
 }
 
 // ExecuteStream performs a streaming request.
-func (e *AIStudioPortkeyExecutor) ExecuteStream(ctx context.Context, auth *Auth, req cliproxyexecutor.Request, opts cliproxyexecutor.Options) (<-chan cliproxyexecutor.StreamChunk, error) {
+func (e *AIStudioPortkeyExecutor) ExecuteStream(ctx context.Context, auth *cliproxyauth.Auth, req cliproxyexecutor.Request, opts cliproxyexecutor.Options) (<-chan cliproxyexecutor.StreamChunk, error) {
 	if auth.Attributes == nil {
 		auth.Attributes = make(map[string]string)
 	}
@@ -104,7 +103,7 @@ func (e *AIStudioPortkeyExecutor) ExecuteStream(ctx context.Context, auth *Auth,
 }
 
 // CountTokens returns the token count.
-func (e *AIStudioPortkeyExecutor) CountTokens(ctx context.Context, auth *Auth, req cliproxyexecutor.Request, opts cliproxyexecutor.Options) (cliproxyexecutor.Response, error) {
+func (e *AIStudioPortkeyExecutor) CountTokens(ctx context.Context, auth *cliproxyauth.Auth, req cliproxyexecutor.Request, opts cliproxyexecutor.Options) (cliproxyexecutor.Response, error) {
 	if auth.Attributes == nil {
 		auth.Attributes = make(map[string]string)
 	}
@@ -115,6 +114,6 @@ func (e *AIStudioPortkeyExecutor) CountTokens(ctx context.Context, auth *Auth, r
 }
 
 // Refresh is a no-op for API keys.
-func (e *AIStudioPortkeyExecutor) Refresh(_ context.Context, auth *Auth) (*Auth, error) {
+func (e *AIStudioPortkeyExecutor) Refresh(_ context.Context, auth *cliproxyauth.Auth) (*cliproxyauth.Auth, error) {
 	return auth, nil
 }

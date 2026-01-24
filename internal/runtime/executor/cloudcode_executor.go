@@ -2,9 +2,8 @@ package executor
 
 import (
 	"context"
-	"fmt"
-	"net/http"
 	"strings"
+	"net/http"
 
 	"github.com/router-for-me/CLIProxyAPI/v6/internal/config"
 	"github.com/router-for-me/CLIProxyAPI/v6/internal/thinking"
@@ -34,7 +33,7 @@ func NewCloudCodeExecutor(cfg *config.Config) *CloudCodeExecutor {
 func (e *CloudCodeExecutor) Identifier() string { return "cloudcode" }
 
 // getTargetExecutor determines which executor to use for a given model.
-func (e *CloudCodeExecutor) getTargetExecutor(model string) ProviderExecutor {
+func (e *CloudCodeExecutor) getTargetExecutor(model string) cliproxyauth.ProviderExecutor {
 	normalizedModel := strings.ToLower(model)
 
 	// Route Claude and Gemini 3 models to Antigravity (Sandbox)
@@ -75,7 +74,7 @@ func (e *CloudCodeExecutor) Execute(ctx context.Context, auth *cliproxyauth.Auth
 }
 
 // ExecuteStream performs a streaming request.
-func (e *CloudCodeExecutor) ExecuteStream(ctx context.Context, auth *Auth, req cliproxyexecutor.Request, opts cliproxyexecutor.Options) (<-chan cliproxyexecutor.StreamChunk, error) {
+func (e *CloudCodeExecutor) ExecuteStream(ctx context.Context, auth *cliproxyauth.Auth, req cliproxyexecutor.Request, opts cliproxyexecutor.Options) (<-chan cliproxyexecutor.StreamChunk, error) {
 	baseModel := thinking.ParseSuffix(req.Model).ModelName
 	target := e.getTargetExecutor(baseModel)
 	
@@ -84,7 +83,7 @@ func (e *CloudCodeExecutor) ExecuteStream(ctx context.Context, auth *Auth, req c
 }
 
 // CountTokens returns the token count for the given request.
-func (e *CloudCodeExecutor) CountTokens(ctx context.Context, auth *Auth, req cliproxyexecutor.Request, opts cliproxyexecutor.Options) (cliproxyexecutor.Response, error) {
+func (e *CloudCodeExecutor) CountTokens(ctx context.Context, auth *cliproxyauth.Auth, req cliproxyexecutor.Request, opts cliproxyexecutor.Options) (cliproxyexecutor.Response, error) {
 	baseModel := thinking.ParseSuffix(req.Model).ModelName
 	target := e.getTargetExecutor(baseModel)
 	
@@ -92,7 +91,7 @@ func (e *CloudCodeExecutor) CountTokens(ctx context.Context, auth *Auth, req cli
 }
 
 // Refresh attempts to refresh provider credentials.
-func (e *CloudCodeExecutor) Refresh(ctx context.Context, auth *Auth) (*Auth, error) {
+func (e *CloudCodeExecutor) Refresh(ctx context.Context, auth *cliproxyauth.Auth) (*cliproxyauth.Auth, error) {
 	// GeminiCLI and Antigravity use different refresh logic, but they both use Google OAuth.
 	// GeminiCLI uses golang.org/x/oauth2 while Antigravity has custom logic.
 	// In our TS project, they share the same token.

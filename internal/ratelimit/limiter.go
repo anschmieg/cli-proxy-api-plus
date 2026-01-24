@@ -2,7 +2,6 @@ package ratelimit
 
 import (
 	"context"
-	"math"
 	"sync"
 	"time"
 )
