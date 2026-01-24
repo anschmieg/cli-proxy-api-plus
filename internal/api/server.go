@@ -204,6 +204,18 @@ func NewServer(cfg *config.Config, authManager *auth.Manager, accessManager *sdk
 	// Add middleware
 	engine.Use(logging.GinLogrusLogger())
 	engine.Use(logging.GinLogrusRecovery())
+	if cfg.RateLimit.Enabled {
+		rate := cfg.RateLimit.RequestsPerMinute / 60.0
+		if rate > 0 {
+			burst := float64(cfg.RateLimit.Burst)
+			if burst <= 0 {
+				burst = rate // Default burst to 1 second worth of requests
+			}
+			rl := middleware.NewRateLimitMiddleware(rate, burst)
+			engine.Use(rl.Handler())
+			// log.Infof("Rate limiting enabled: %.2f req/sec (burst %.0f)", rate, burst)
+		}
+	}
 	for _, mw := range optionState.extraMiddleware {
 		engine.Use(mw)
 	}

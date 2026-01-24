@@ -68,6 +68,9 @@ type Config struct {
 	// Routing controls credential selection behavior.
 	Routing RoutingConfig `yaml:"routing" json:"routing"`
 
+	// RateLimit controls global API rate limiting.
+	RateLimit RateLimitConfig `yaml:"rate-limit" json:"rate-limit"`
+
 	// WebsocketAuth enables or disables authentication for the WebSocket API.
 	WebsocketAuth bool `yaml:"ws-auth" json:"ws-auth"`
 
@@ -166,6 +169,16 @@ type RoutingConfig struct {
 	// Strategy selects the credential selection strategy.
 	// Supported values: "round-robin" (default), "fill-first".
 	Strategy string `yaml:"strategy,omitempty" json:"strategy,omitempty"`
+}
+
+// RateLimitConfig configures the global rate limiter.
+type RateLimitConfig struct {
+	// Enabled toggles the rate limiter.
+	Enabled bool `yaml:"enabled" json:"enabled"`
+	// RequestsPerMinute is the number of requests allowed per minute per IP.
+	RequestsPerMinute float64 `yaml:"requests-per-minute" json:"requests-per-minute"`
+	// Burst is the maximum burst size.
+	Burst int `yaml:"burst" json:"burst"`
 }
 
 // OAuthModelAlias defines a model ID alias for a specific channel.
