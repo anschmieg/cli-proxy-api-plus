@@ -738,22 +738,25 @@ func (s *Server) serveManagementControlPanel(c *gin.Context) {
 	if val, ok := os.LookupEnv("DISABLE_MANAGEMENT_AUTH"); ok && strings.EqualFold(strings.TrimSpace(val), "true") {
 		content, err := os.ReadFile(filePath)
 		if err == nil {
-			// Inject script before </body> to preset credentials
+			// Inject script early to preset credentials before other scripts run
 			script := `<script>
 (function(){
 	try {
 		const k = "auth-disabled-bypass";
-		if(!localStorage.getItem("management-key")) localStorage.setItem("management-key", k);
-		if(!localStorage.getItem("key")) localStorage.setItem("key", k);
+		["management-key", "key", "api-key", "token", "auth-token"].forEach(v => {
+			if(!localStorage.getItem(v)) localStorage.setItem(v, k);
+		});
 	} catch(e){}
 })();
 </script>`
-			// Try to inject before </body>, fallback to appending if not found
 			htmlStr := string(content)
-			if strings.Contains(htmlStr, "</body>") {
-				htmlStr = strings.Replace(htmlStr, "</body>", script+"</body>", 1)
+			// Inject before </head> or after <body> or at start
+			if strings.Contains(htmlStr, "</head>") {
+				htmlStr = strings.Replace(htmlStr, "</head>", script+"</head>", 1)
+			} else if strings.Contains(htmlStr, "<body>") {
+				htmlStr = strings.Replace(htmlStr, "<body>", "<body>"+script, 1)
 			} else {
-				htmlStr += script
+				htmlStr = script + htmlStr
 			}
 			c.Header("Content-Type", "text/html")
 			c.String(http.StatusOK, htmlStr)
