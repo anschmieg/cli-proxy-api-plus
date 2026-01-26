@@ -46,6 +46,7 @@ type Handler struct {
 	localPassword       string
 	allowRemoteOverride bool
 	envSecret           string
+	disableAuth         bool
 	logDir              string
 }
 
@@ -53,6 +54,9 @@ type Handler struct {
 func NewHandler(cfg *config.Config, configFilePath string, manager *coreauth.Manager) *Handler {
 	envSecret, _ := os.LookupEnv("MANAGEMENT_PASSWORD")
 	envSecret = strings.TrimSpace(envSecret)
+	
+	disableAuthStr, _ := os.LookupEnv("DISABLE_MANAGEMENT_AUTH")
+	disableAuth := strings.ToLower(strings.TrimSpace(disableAuthStr)) == "true"
 
 	h := &Handler{
 		cfg:                 cfg,
@@ -63,6 +67,7 @@ func NewHandler(cfg *config.Config, configFilePath string, manager *coreauth.Man
 		tokenStore:          sdkAuth.GetTokenStore(),
 		allowRemoteOverride: envSecret != "",
 		envSecret:           envSecret,
+		disableAuth:         disableAuth,
 	}
 	h.startAttemptCleanup()
 	return h
@@ -139,6 +144,11 @@ func (h *Handler) Middleware() gin.HandlerFunc {
 		c.Header("X-CPA-VERSION", buildinfo.Version)
 		c.Header("X-CPA-COMMIT", buildinfo.Commit)
 		c.Header("X-CPA-BUILD-DATE", buildinfo.BuildDate)
+
+		if h.disableAuth {
+			c.Next()
+			return
+		}
 
 		clientIP := c.ClientIP()
 		localClient := clientIP == "127.0.0.1" || clientIP == "::1"
