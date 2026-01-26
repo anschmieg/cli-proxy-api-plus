@@ -357,17 +357,27 @@ func (s *Server) setupRoutes() {
 	// Serve custom UI if available
 	staticDir := "static"
 	if _, err := os.Stat(staticDir); err == nil {
-		s.engine.Static("/assets", filepath.Join(staticDir, "assets"))
-		s.engine.StaticFile("/favicon.ico", filepath.Join(staticDir, "favicon.ico"))
-		// Serve index.html for root and unknown routes (SPA support)
+		s.engine.Static("/admin/assets", filepath.Join(staticDir, "assets"))
+		s.engine.StaticFile("/admin/favicon.ico", filepath.Join(staticDir, "favicon.ico"))
+		
+		// Serve legacy management UI at /admin/classic
+		s.engine.GET("/admin/classic", s.serveManagementControlPanel)
+
+		// Serve index.html for /admin routes (SPA support)
 		s.engine.NoRoute(func(c *gin.Context) {
-			if strings.HasPrefix(c.Request.URL.Path, "/v1") || strings.HasPrefix(c.Request.URL.Path, "/v0") {
-				c.Status(http.StatusNotFound)
+			if strings.HasPrefix(c.Request.URL.Path, "/admin") {
+				c.File(filepath.Join(staticDir, "index.html"))
 				return
 			}
-			c.File(filepath.Join(staticDir, "index.html"))
+			c.Status(http.StatusNotFound)
 		})
-		log.Infof("Serving custom UI from %s", staticDir)
+		
+		// Redirect root to /admin
+		s.engine.GET("/", func(c *gin.Context) {
+			c.Redirect(http.StatusFound, "/admin")
+		})
+
+		log.Infof("Serving custom UI from %s at /admin", staticDir)
 	} else {
 		// Root endpoint (legacy)
 		s.engine.GET("/", func(c *gin.Context) {
