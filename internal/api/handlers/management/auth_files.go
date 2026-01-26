@@ -1971,7 +1971,7 @@ func (h *Handler) RequestGitHubToken(c *gin.Context) {
 		fileName := fmt.Sprintf("github-%s.json", username)
 		record := &coreauth.Auth{
 			ID:       fileName,
-			Provider: "github-copilot",
+			Provider: "github",
 			FileName: fileName,
 			Storage:  tokenStorage,
 			Metadata: map[string]any{

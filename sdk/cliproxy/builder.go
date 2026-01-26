@@ -219,7 +219,7 @@ func (b *Builder) Build() (*Service, error) {
 
 		coreManager = coreauth.NewManager(tokenStore, selector, nil)
 	}
-	// github_copilot_access.SetGlobalAuthManager(coreManager) // Commented out for now
+	github_copilot_access.SetGlobalAuthManager(coreManager) // Set the global auth manager for the copilot access provider
 	// Attach a default RoundTripper provider so providers can opt-in per-auth transports.
 	coreManager.SetRoundTripperProvider(newDefaultRoundTripperProvider())
 	coreManager.SetConfig(b.cfg)
