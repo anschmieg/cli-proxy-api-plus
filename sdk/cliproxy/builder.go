@@ -161,6 +161,10 @@ func (b *Builder) Build() (*Service, error) {
 		return nil, fmt.Errorf("cliproxy: configuration path is required")
 	}
 
+	// Ensure all access providers are registered before building
+	configaccess.Register()
+	github_copilot_access.Register()
+
 	tokenProvider := b.tokenProvider
 	if tokenProvider == nil {
 		tokenProvider = NewFileTokenClientProvider()
@@ -213,6 +217,7 @@ func (b *Builder) Build() (*Service, error) {
 
 		coreManager = coreauth.NewManager(tokenStore, selector, nil)
 	}
+	github_copilot_access.SetGlobalAuthManager(coreManager) // Set the global auth manager for the copilot access provider
 	// Attach a default RoundTripper provider so providers can opt-in per-auth transports.
 	coreManager.SetRoundTripperProvider(newDefaultRoundTripperProvider())
 	coreManager.SetConfig(b.cfg)
