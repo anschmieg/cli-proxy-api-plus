@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/router-for-me/CLIProxyAPI/v6/internal/access/config_access"
+	"github.com/router-for-me/CLIProxyAPI/v6/internal/access/github_copilot_access"
 	"github.com/router-for-me/CLIProxyAPI/v6/internal/api"
 	sdkaccess "github.com/router-for-me/CLIProxyAPI/v6/sdk/access"
 	sdkAuth "github.com/router-for-me/CLIProxyAPI/v6/sdk/auth"
