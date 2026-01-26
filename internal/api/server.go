@@ -734,6 +734,34 @@ func (s *Server) serveManagementControlPanel(c *gin.Context) {
 		return
 	}
 
+	// Check if auth is disabled and inject bypass script
+	if val, ok := os.LookupEnv("DISABLE_MANAGEMENT_AUTH"); ok && strings.EqualFold(strings.TrimSpace(val), "true") {
+		content, err := os.ReadFile(filePath)
+		if err == nil {
+			// Inject script before </body> to preset credentials
+			script := `<script>
+(function(){
+	try {
+		const k = "auth-disabled-bypass";
+		if(!localStorage.getItem("management-key")) localStorage.setItem("management-key", k);
+		if(!localStorage.getItem("key")) localStorage.setItem("key", k);
+	} catch(e){}
+})();
+</script>`
+			// Try to inject before </body>, fallback to appending if not found
+			htmlStr := string(content)
+			if strings.Contains(htmlStr, "</body>") {
+				htmlStr = strings.Replace(htmlStr, "</body>", script+"</body>", 1)
+			} else {
+				htmlStr += script
+			}
+			c.Header("Content-Type", "text/html")
+			c.String(http.StatusOK, htmlStr)
+			return
+		}
+		log.WithError(err).Warn("failed to read management asset for injection, serving file directly")
+	}
+
 	c.File(filePath)
 }
 
