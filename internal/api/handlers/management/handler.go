@@ -46,7 +46,6 @@ type Handler struct {
 	localPassword       string
 	allowRemoteOverride bool
 	envSecret           string
-	disableAuth         bool
 	logDir              string
 }
 
@@ -54,9 +53,6 @@ type Handler struct {
 func NewHandler(cfg *config.Config, configFilePath string, manager *coreauth.Manager) *Handler {
 	envSecret, _ := os.LookupEnv("MANAGEMENT_PASSWORD")
 	envSecret = strings.TrimSpace(envSecret)
-	
-	disableAuthStr, _ := os.LookupEnv("DISABLE_MANAGEMENT_AUTH")
-	disableAuth := strings.ToLower(strings.TrimSpace(disableAuthStr)) == "true"
 
 	h := &Handler{
 		cfg:                 cfg,
@@ -67,7 +63,6 @@ func NewHandler(cfg *config.Config, configFilePath string, manager *coreauth.Man
 		tokenStore:          sdkAuth.GetTokenStore(),
 		allowRemoteOverride: envSecret != "",
 		envSecret:           envSecret,
-		disableAuth:         disableAuth,
 	}
 	h.startAttemptCleanup()
 	return h
@@ -145,7 +140,7 @@ func (h *Handler) Middleware() gin.HandlerFunc {
 		c.Header("X-CPA-COMMIT", buildinfo.Commit)
 		c.Header("X-CPA-BUILD-DATE", buildinfo.BuildDate)
 
-		if h.disableAuth {
+		if val, ok := os.LookupEnv("DISABLE_MANAGEMENT_AUTH"); ok && strings.EqualFold(strings.TrimSpace(val), "true") {
 			c.Next()
 			return
 		}
