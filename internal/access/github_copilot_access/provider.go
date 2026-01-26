@@ -76,11 +76,15 @@ func (p *provider) Authenticate(ctx context.Context, r *http.Request) (*sdkacces
 		return nil, sdkaccess.ErrNoCredentials
 	}
 
-	// Try to find an active Auth record for "github-copilot"
-	auths := globalAuthManager.ListAuthsByProvider(AccessProviderTypeGitHubCopilot)
-	if len(auths) == 0 {
-		log.Debugf("github-copilot access provider: no active auth records found for %s", AccessProviderTypeGitHubCopilot)
-		return nil, sdkaccess.ErrNoCredentials // No configured GitHub Copilot accounts
+	// Iterate through all known auths to find an active github-copilot one.
+	// This is a more direct way since globalAuthManager.ListAuthsByProvider doesn't exist.
+	var activeAuth *coreauth.Auth
+	auths := globalAuthManager.List() // Get all auths
+	for _, auth := range auths {
+		if auth.Provider == AccessProviderTypeGitHubCopilot && !auth.Disabled && auth.Status == coreauth.StatusActive {
+			activeAuth = auth
+			break
+		}
 	}
 
 	// For now, just pick the first available active GitHub Copilot auth.
