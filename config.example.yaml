@@ -237,6 +237,22 @@ codex-instructions-enabled: false
 oauth-model-alias:
   # Expose official Anthropic model IDs while routing to Kiro-backed models.
   kiro:
+    # Official non-dated IDs
+    - name: "kiro-claude-sonnet-4-5"
+      alias: "claude-sonnet-4.5"
+      fork: true
+    - name: "kiro-claude-haiku-4-5"
+      alias: "claude-haiku-4.5"
+      fork: true
+    - name: "kiro-claude-opus-4-5"
+      alias: "claude-opus-4.5"
+      fork: true
+    - name: "kiro-claude-sonnet-4-5"
+      alias: "claude-3-5-sonnet"
+      fork: true
+    - name: "kiro-claude-haiku-4-5"
+      alias: "claude-3-5-haiku"
+      fork: true
     - name: "kiro-claude-sonnet-4-5"
       alias: "claude-3-5-sonnet-20241022"
       fork: true
