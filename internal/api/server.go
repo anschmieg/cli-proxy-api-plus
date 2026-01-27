@@ -5,11 +5,14 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"crypto/subtle"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -171,6 +174,11 @@ type Server struct {
 	keepAliveOnTimeout func()
 	keepAliveHeartbeat chan struct{}
 	keepAliveStop      chan struct{}
+
+	// ttsBaseURL is the validated base URL for the OpenAI-compatible TTS sidecar.
+	ttsBaseURL string
+	// ttsClient is the HTTP client used to call the TTS sidecar.
+	ttsClient *http.Client
 }
 
 // NewServer creates and initializes a new API server instance.
@@ -269,6 +277,15 @@ func NewServer(cfg *config.Config, authManager *auth.Manager, accessManager *sdk
 	managementasset.SetCurrentConfig(cfg)
 	auth.SetQuotaCooldownDisabled(cfg.DisableCooling)
 	misc.SetCodexInstructionsEnabled(cfg.CodexInstructionsEnabled)
+
+	// Configure optional OpenAI-compatible TTS sidecar routing.
+	s.ttsBaseURL = resolveTTSBaseURL()
+	s.ttsClient = &http.Client{Timeout: 90 * time.Second}
+	if s.ttsBaseURL == "" {
+		log.Warn("tts sidecar disabled: invalid or empty TTS base URL")
+	} else {
+		log.Infof("tts sidecar enabled at %s", s.ttsBaseURL)
+	}
 	// Initialize management handler
 	s.mgmt = managementHandlers.NewHandler(cfg, configFilePath, authManager)
 	if optionState.localPassword != "" {
@@ -340,6 +357,7 @@ func (s *Server) setupRoutes() {
 		v1.GET("/models", s.unifiedModelsHandler(openaiHandlers, claudeCodeHandlers))
 		v1.POST("/chat/completions", openaiHandlers.ChatCompletions)
 		v1.POST("/completions", openaiHandlers.Completions)
+		v1.POST("/audio/speech", s.ttsSpeech)
 		v1.POST("/messages", claudeCodeHandlers.ClaudeMessages)
 		v1.POST("/messages/count_tokens", claudeCodeHandlers.ClaudeCountTokens)
 		v1.POST("/responses", openaiResponsesHandlers.Responses)
@@ -844,6 +862,135 @@ func (s *Server) watchKeepAlive() {
 		case <-s.keepAliveStop:
 			return
 		}
+	}
+}
+
+func resolveTTSBaseURL() string {
+	raw := strings.TrimSpace(os.Getenv("EDGE_TTS_BASE_URL"))
+	if raw == "" {
+		raw = strings.TrimSpace(os.Getenv("TTS_BASE_URL"))
+	}
+	if raw == "" {
+		raw = "http://edge-tts:5050"
+	}
+	return sanitizeBaseURL(raw)
+}
+
+func sanitizeBaseURL(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return ""
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return ""
+	}
+	if parsed.Host == "" {
+		return ""
+	}
+	parsed.Path = strings.TrimRight(parsed.Path, "/")
+	return parsed.String()
+}
+
+func copyProxyHeaders(dst, src http.Header) {
+	if dst == nil || src == nil {
+		return
+	}
+	hopByHop := map[string]struct{}{
+		"Connection":          {},
+		"Keep-Alive":          {},
+		"Proxy-Authenticate":  {},
+		"Proxy-Authorization": {},
+		"Te":                  {},
+		"Trailer":             {},
+		"Transfer-Encoding":   {},
+		"Upgrade":             {},
+	}
+	for key, values := range src {
+		if _, skip := hopByHop[http.CanonicalHeaderKey(key)]; skip {
+			continue
+		}
+		for _, value := range values {
+			dst.Add(key, value)
+		}
+	}
+}
+
+func (s *Server) ttsSpeech(c *gin.Context) {
+	if s == nil || s.ttsBaseURL == "" || s.ttsClient == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{
+			"error": gin.H{
+				"message": "tts sidecar is not configured",
+				"type":    "service_unavailable",
+			},
+		})
+		return
+	}
+
+	targetURL, err := url.JoinPath(s.ttsBaseURL, "v1", "audio", "speech")
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": gin.H{
+				"message": "failed to construct tts target url",
+				"type":    "internal_error",
+			},
+		})
+		return
+	}
+
+	body, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": gin.H{
+				"message": "failed to read request body",
+				"type":    "invalid_request_error",
+			},
+		})
+		return
+	}
+
+	req, err := http.NewRequestWithContext(c.Request.Context(), http.MethodPost, targetURL, bytes.NewReader(body))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": gin.H{
+				"message": "failed to build tts request",
+				"type":    "internal_error",
+			},
+		})
+		return
+	}
+	if contentType := strings.TrimSpace(c.GetHeader("Content-Type")); contentType != "" {
+		req.Header.Set("Content-Type", contentType)
+	} else {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	if accept := strings.TrimSpace(c.GetHeader("Accept")); accept != "" {
+		req.Header.Set("Accept", accept)
+	}
+	if userAgent := strings.TrimSpace(c.GetHeader("User-Agent")); userAgent != "" {
+		req.Header.Set("User-Agent", userAgent)
+	}
+
+	resp, err := s.ttsClient.Do(req)
+	if err != nil {
+		log.WithError(err).Warn("tts sidecar request failed")
+		c.JSON(http.StatusBadGateway, gin.H{
+			"error": gin.H{
+				"message": "tts sidecar request failed",
+				"type":    "bad_gateway",
+			},
+		})
+		return
+	}
+	defer resp.Body.Close()
+
+	copyProxyHeaders(c.Writer.Header(), resp.Header)
+	c.Status(resp.StatusCode)
+	if _, errCopy := io.Copy(c.Writer, resp.Body); errCopy != nil {
+		log.WithError(errCopy).Warn("tts sidecar response copy failed")
 	}
 }
 
