@@ -2,7 +2,6 @@ package management
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io/fs"
 	"path/filepath"
@@ -57,7 +56,6 @@ func (h *Handler) GetKiroQuotaStatus(c *gin.Context) {
 		return
 	}
 
-	client := kiroauth.NewKiroAuth(h.cfg)
 	cwClient := kiroauth.NewCodeWhispererClient(h.cfg, "")
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 15*time.Second)
 	defer cancel()
@@ -100,22 +98,6 @@ func (h *Handler) GetKiroQuotaStatus(c *gin.Context) {
 		}
 		if entry.UsageLimit > 0 {
 			entry.UsagePercent = (entry.CurrentUsage / entry.UsageLimit) * 100
-		}
-
-		models, errModels := client.ListAvailableModels(ctx, tokenData)
-		if errModels == nil && len(models) > 0 {
-			entry.AvailableModels = make([]string, 0, len(models))
-			for _, m := range models {
-				if m == nil {
-					continue
-				}
-				id := strings.TrimSpace(m.ModelID)
-				if id != "" {
-					entry.AvailableModels = append(entry.AvailableModels, id)
-				}
-			}
-		} else if errModels != nil && !errors.Is(errModels, context.DeadlineExceeded) {
-			entry.Error = strings.TrimSpace(entry.Error + "; models error: " + errModels.Error())
 		}
 
 		accounts = append(accounts, entry)
