@@ -58,6 +58,7 @@ func (h *Handler) GetKiroQuotaStatus(c *gin.Context) {
 	}
 
 	client := kiroauth.NewKiroAuth(h.cfg)
+	cwClient := kiroauth.NewCodeWhispererClient(h.cfg, "")
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 15*time.Second)
 	defer cancel()
 
@@ -75,19 +76,30 @@ func (h *Handler) GetKiroQuotaStatus(c *gin.Context) {
 
 		tokenData := storage.ToTokenData()
 
-		usage, err := client.GetUsageLimits(ctx, tokenData)
+		usageResp, err := cwClient.GetUsageLimits(ctx, tokenData.AccessToken)
 		if err != nil {
 			entry.Error = fmt.Sprintf("usage limits error: %v", err)
 			accounts = append(accounts, entry)
 			continue
 		}
 
-		entry.SubscriptionTitle = usage.SubscriptionTitle
-		entry.CurrentUsage = usage.CurrentUsage
-		entry.UsageLimit = usage.UsageLimit
-		entry.NextReset = usage.NextReset
-		if usage.UsageLimit > 0 {
-			entry.UsagePercent = (usage.CurrentUsage / usage.UsageLimit) * 100
+		if usageResp.SubscriptionInfo != nil {
+			entry.SubscriptionTitle = usageResp.SubscriptionInfo.SubscriptionTitle
+		}
+		if usageResp.NextDateReset != nil {
+			entry.NextReset = fmt.Sprintf("%v", *usageResp.NextDateReset)
+		}
+		if len(usageResp.UsageBreakdownList) > 0 {
+			first := usageResp.UsageBreakdownList[0]
+			if first.CurrentUsageWithPrecision != nil {
+				entry.CurrentUsage = *first.CurrentUsageWithPrecision
+			}
+			if first.UsageLimitWithPrecision != nil {
+				entry.UsageLimit = *first.UsageLimitWithPrecision
+			}
+		}
+		if entry.UsageLimit > 0 {
+			entry.UsagePercent = (entry.CurrentUsage / entry.UsageLimit) * 100
 		}
 
 		models, errModels := client.ListAvailableModels(ctx, tokenData)
@@ -113,4 +125,3 @@ func (h *Handler) GetKiroQuotaStatus(c *gin.Context) {
 		"accounts": accounts,
 	})
 }
-
