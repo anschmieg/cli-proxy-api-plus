@@ -377,7 +377,7 @@ func (s *Server) setupRoutes() {
 	if _, err := os.Stat(staticDir); err == nil {
 		s.engine.Static("/admin/assets", filepath.Join(staticDir, "assets"))
 		s.engine.StaticFile("/admin/favicon.ico", filepath.Join(staticDir, "favicon.ico"))
-		
+
 		// Serve legacy management UI at /admin/classic
 		s.engine.GET("/admin/classic", s.serveManagementControlPanel)
 
@@ -389,7 +389,7 @@ func (s *Server) setupRoutes() {
 			}
 			c.Status(http.StatusNotFound)
 		})
-		
+
 		// Redirect root to /admin
 		s.engine.GET("/", func(c *gin.Context) {
 			c.Redirect(http.StatusFound, "/admin")
