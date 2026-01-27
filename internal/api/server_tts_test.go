@@ -78,3 +78,38 @@ func TestResolveTTSBaseURL(t *testing.T) {
 		}
 	})
 }
+
+func TestBuildTTSURL(t *testing.T) {
+	t.Parallel()
+
+	t.Run("joins audio path", func(t *testing.T) {
+		t.Parallel()
+		got, err := buildTTSURL("http://edge-tts:5050", "speech", "")
+		if err != nil {
+			t.Fatalf("buildTTSURL returned error: %v", err)
+		}
+		want := "http://edge-tts:5050/v1/audio/speech"
+		if got != want {
+			t.Fatalf("buildTTSURL() = %q, want %q", got, want)
+		}
+	})
+
+	t.Run("preserves query string", func(t *testing.T) {
+		t.Parallel()
+		got, err := buildTTSURL("http://edge-tts:5050", "voices", "locale=en-US")
+		if err != nil {
+			t.Fatalf("buildTTSURL returned error: %v", err)
+		}
+		want := "http://edge-tts:5050/v1/audio/voices?locale=en-US"
+		if got != want {
+			t.Fatalf("buildTTSURL() = %q, want %q", got, want)
+		}
+	})
+
+	t.Run("rejects empty path", func(t *testing.T) {
+		t.Parallel()
+		if _, err := buildTTSURL("http://edge-tts:5050", "", ""); err == nil {
+			t.Fatal("expected error for empty audio path")
+		}
+	})
+}

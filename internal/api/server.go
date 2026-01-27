@@ -357,7 +357,8 @@ func (s *Server) setupRoutes() {
 		v1.GET("/models", s.unifiedModelsHandler(openaiHandlers, claudeCodeHandlers))
 		v1.POST("/chat/completions", openaiHandlers.ChatCompletions)
 		v1.POST("/completions", openaiHandlers.Completions)
-		v1.POST("/audio/speech", s.ttsSpeech)
+		v1.POST("/audio/*path", s.ttsAudioProxy)
+		v1.GET("/audio/*path", s.ttsAudioProxy)
 		v1.POST("/messages", claudeCodeHandlers.ClaudeMessages)
 		v1.POST("/messages/count_tokens", claudeCodeHandlers.ClaudeCountTokens)
 		v1.POST("/responses", openaiResponsesHandlers.Responses)
@@ -919,7 +920,22 @@ func copyProxyHeaders(dst, src http.Header) {
 	}
 }
 
-func (s *Server) ttsSpeech(c *gin.Context) {
+func buildTTSURL(baseURL, audioPath, rawQuery string) (string, error) {
+	audioPath = strings.Trim(audioPath, "/")
+	if audioPath == "" {
+		return "", fmt.Errorf("audio path is required")
+	}
+	targetURL, err := url.JoinPath(baseURL, "v1", "audio", audioPath)
+	if err != nil {
+		return "", err
+	}
+	if strings.TrimSpace(rawQuery) != "" {
+		targetURL += "?" + rawQuery
+	}
+	return targetURL, nil
+}
+
+func (s *Server) ttsAudioProxy(c *gin.Context) {
 	if s == nil || s.ttsBaseURL == "" || s.ttsClient == nil {
 		c.JSON(http.StatusServiceUnavailable, gin.H{
 			"error": gin.H{
@@ -930,11 +946,12 @@ func (s *Server) ttsSpeech(c *gin.Context) {
 		return
 	}
 
-	targetURL, err := url.JoinPath(s.ttsBaseURL, "v1", "audio", "speech")
+	audioPath := strings.TrimPrefix(c.Param("path"), "/")
+	targetURL, err := buildTTSURL(s.ttsBaseURL, audioPath, c.Request.URL.RawQuery)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": gin.H{
-				"message": "failed to construct tts target url",
+				"message": "failed to construct tts target url: " + err.Error(),
 				"type":    "internal_error",
 			},
 		})
@@ -952,7 +969,7 @@ func (s *Server) ttsSpeech(c *gin.Context) {
 		return
 	}
 
-	req, err := http.NewRequestWithContext(c.Request.Context(), http.MethodPost, targetURL, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(c.Request.Context(), c.Request.Method, targetURL, bytes.NewReader(body))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": gin.H{
