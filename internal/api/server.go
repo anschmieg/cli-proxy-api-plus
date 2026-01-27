@@ -349,12 +349,13 @@ func (s *Server) setupRoutes() {
 	geminiCLIHandlers := gemini.NewGeminiCLIAPIHandler(s.handlers)
 	claudeCodeHandlers := claude.NewClaudeCodeAPIHandler(s.handlers)
 	openaiResponsesHandlers := openai.NewOpenAIResponsesAPIHandler(s.handlers)
+	modelsHandler := s.unifiedModelsUnionHandler(openaiHandlers, claudeCodeHandlers)
 
 	// OpenAI compatible API routes
 	v1 := s.engine.Group("/v1")
 	v1.Use(AuthMiddleware(s.accessManager))
 	{
-		v1.GET("/models", s.unifiedModelsHandler(openaiHandlers, claudeCodeHandlers))
+		v1.GET("/models", modelsHandler)
 		v1.POST("/chat/completions", openaiHandlers.ChatCompletions)
 		v1.POST("/completions", openaiHandlers.Completions)
 		v1.POST("/embeddings", s.unsupportedOpenAIEndpoint("embeddings"))
@@ -363,6 +364,14 @@ func (s *Server) setupRoutes() {
 		v1.POST("/messages", claudeCodeHandlers.ClaudeMessages)
 		v1.POST("/messages/count_tokens", claudeCodeHandlers.ClaudeCountTokens)
 		v1.POST("/responses", openaiResponsesHandlers.Responses)
+	}
+	// Claude-compatible root aliases (Anthropic clients often assume /v1 is appended).
+	root := s.engine.Group("/")
+	root.Use(AuthMiddleware(s.accessManager))
+	{
+		root.GET("/models", modelsHandler)
+		root.POST("/messages", claudeCodeHandlers.ClaudeMessages)
+		root.POST("/messages/count_tokens", claudeCodeHandlers.ClaudeCountTokens)
 	}
 
 	// Gemini compatible API routes
@@ -1032,22 +1041,59 @@ func (s *Server) unsupportedOpenAIEndpoint(endpoint string) gin.HandlerFunc {
 	}
 }
 
-// unifiedModelsHandler creates a unified handler for the /v1/models endpoint
-// that routes to different handlers based on the User-Agent header.
-// If User-Agent starts with "claude-cli", it routes to Claude handler,
-// otherwise it routes to OpenAI handler.
-func (s *Server) unifiedModelsHandler(openaiHandler *openai.OpenAIAPIHandler, claudeHandler *claude.ClaudeCodeAPIHandler) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		userAgent := c.GetHeader("User-Agent")
-
-		// Route to Claude handler if User-Agent starts with "claude-cli"
-		if strings.HasPrefix(userAgent, "claude-cli") {
-			// log.Debugf("Routing /v1/models to Claude handler for User-Agent: %s", userAgent)
-			claudeHandler.ClaudeModels(c)
-		} else {
-			// log.Debugf("Routing /v1/models to OpenAI handler for User-Agent: %s", userAgent)
-			openaiHandler.OpenAIModels(c)
+// unifiedModelsUnionHandler returns a consistent OpenAI-style model list that
+// unions the models visible to both OpenAI and Claude handlers.
+// This avoids user-agent-dependent model visibility and keeps Claude Code and
+// OpenAI clients aligned on the same model catalog.
+func (s *Server) unifiedModelsUnionHandler(openaiHandler *openai.OpenAIAPIHandler, claudeHandler *claude.ClaudeCodeAPIHandler) gin.HandlerFunc {
+	collect := func(models []map[string]any, out map[string]map[string]any) {
+		for i := range models {
+			model := models[i]
+			id, _ := model["id"].(string)
+			id = strings.TrimSpace(id)
+			if id == "" {
+				continue
+			}
+			candidate := map[string]any{
+				"id":     id,
+				"object": model["object"],
+			}
+			if created, ok := model["created"]; ok {
+				candidate["created"] = created
+			}
+			if ownedBy, ok := model["owned_by"]; ok {
+				candidate["owned_by"] = ownedBy
+			}
+			existing, exists := out[id]
+			if !exists {
+				out[id] = candidate
+				continue
+			}
+			// Prefer the record that has more metadata populated.
+			if _, ok := existing["created"]; !ok {
+				if created, okCreated := candidate["created"]; okCreated {
+					existing["created"] = created
+				}
+			}
+			if _, ok := existing["owned_by"]; !ok {
+				if ownedBy, okOwned := candidate["owned_by"]; okOwned {
+					existing["owned_by"] = ownedBy
+				}
+			}
 		}
+	}
+	return func(c *gin.Context) {
+		union := make(map[string]map[string]any, 256)
+		collect(openaiHandler.Models(), union)
+		collect(claudeHandler.Models(), union)
+		data := make([]map[string]any, 0, len(union))
+		for _, model := range union {
+			data = append(data, model)
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"object": "list",
+			"data":   data,
+		})
 	}
 }
 
