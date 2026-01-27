@@ -357,6 +357,7 @@ func (s *Server) setupRoutes() {
 		v1.GET("/models", s.unifiedModelsHandler(openaiHandlers, claudeCodeHandlers))
 		v1.POST("/chat/completions", openaiHandlers.ChatCompletions)
 		v1.POST("/completions", openaiHandlers.Completions)
+		v1.POST("/embeddings", s.unsupportedOpenAIEndpoint("embeddings"))
 		v1.POST("/audio/*path", s.ttsAudioProxy)
 		v1.GET("/audio/*path", s.ttsAudioProxy)
 		v1.POST("/messages", claudeCodeHandlers.ClaudeMessages)
@@ -1008,6 +1009,26 @@ func (s *Server) ttsAudioProxy(c *gin.Context) {
 	c.Status(resp.StatusCode)
 	if _, errCopy := io.Copy(c.Writer, resp.Body); errCopy != nil {
 		log.WithError(errCopy).Warn("tts sidecar response copy failed")
+	}
+}
+
+// unsupportedOpenAIEndpoint returns a consistent OpenAI-style error for endpoints
+// that are not yet implemented by this gateway.
+func (s *Server) unsupportedOpenAIEndpoint(endpoint string) gin.HandlerFunc {
+	trimmed := strings.Trim(strings.TrimSpace(endpoint), "/")
+	if trimmed == "" {
+		trimmed = "unknown"
+	}
+	message := fmt.Sprintf("/v1/%s is not supported by this gateway", trimmed)
+	return func(c *gin.Context) {
+		c.JSON(http.StatusNotImplemented, gin.H{
+			"error": gin.H{
+				"message": message,
+				"type":    "unsupported_endpoint",
+				"param":   trimmed,
+				"code":    "unsupported_endpoint",
+			},
+		})
 	}
 }
 
