@@ -33,6 +33,10 @@ const attemptCleanupInterval = 1 * time.Hour
 // attemptMaxIdleTime controls how long an IP can be idle before cleanup
 const attemptMaxIdleTime = 2 * time.Hour
 
+// kiroQuotaCacheTTL controls how long Kiro quota responses are cached in memory
+// to reduce upstream usage-limit requests from the dashboard.
+const kiroQuotaCacheTTL = 30 * time.Second
+
 // Handler aggregates config reference, persistence path and helpers.
 type Handler struct {
 	cfg                 *config.Config
@@ -47,6 +51,11 @@ type Handler struct {
 	allowRemoteOverride bool
 	envSecret           string
 	logDir              string
+
+	kiroQuotaCacheMu      sync.Mutex
+	kiroQuotaCacheAuthDir string
+	kiroQuotaCacheUntil   time.Time
+	kiroQuotaCacheData    []kiroQuotaEntry
 }
 
 // NewHandler creates a new management handler instance.
@@ -104,7 +113,14 @@ func NewHandlerWithoutConfigFilePath(cfg *config.Config, manager *coreauth.Manag
 }
 
 // SetConfig updates the in-memory config reference when the server hot-reloads.
-func (h *Handler) SetConfig(cfg *config.Config) { h.cfg = cfg }
+func (h *Handler) SetConfig(cfg *config.Config) {
+	h.cfg = cfg
+	h.kiroQuotaCacheMu.Lock()
+	h.kiroQuotaCacheAuthDir = ""
+	h.kiroQuotaCacheUntil = time.Time{}
+	h.kiroQuotaCacheData = nil
+	h.kiroQuotaCacheMu.Unlock()
+}
 
 // SetAuthManager updates the auth manager reference used by management endpoints.
 func (h *Handler) SetAuthManager(manager *coreauth.Manager) { h.authManager = manager }

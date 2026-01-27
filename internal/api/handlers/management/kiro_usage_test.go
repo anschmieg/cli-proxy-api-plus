@@ -211,3 +211,39 @@ func floatPtr(v float64) *float64 {
 func intPtr(v int) *int {
 	return &v
 }
+
+func TestKiroQuotaCache(t *testing.T) {
+	t.Parallel()
+
+	h := &Handler{}
+	now := time.Date(2026, time.January, 27, 16, 0, 0, 0, time.UTC)
+	accounts := []kiroQuotaEntry{{ID: "alpha"}}
+
+	h.setCachedKiroQuota("dir-a", now, accounts)
+
+	if cached, ok := h.getCachedKiroQuota("dir-a", now.Add(10*time.Second)); !ok || len(cached) != 1 {
+		t.Fatalf("expected cached result, got ok=%v len=%d", ok, len(cached))
+	}
+
+	// Ensure we return a defensive copy.
+	cached, ok := h.getCachedKiroQuota("dir-a", now.Add(10*time.Second))
+	if !ok {
+		t.Fatal("expected cached result on second read")
+	}
+	cached[0].ID = "mutated"
+	cachedAgain, ok := h.getCachedKiroQuota("dir-a", now.Add(10*time.Second))
+	if !ok {
+		t.Fatal("expected cached result on third read")
+	}
+	if cachedAgain[0].ID != "alpha" {
+		t.Fatalf("expected defensive copy, got %q", cachedAgain[0].ID)
+	}
+
+	if _, ok := h.getCachedKiroQuota("dir-b", now.Add(10*time.Second)); ok {
+		t.Fatal("expected cache miss for different auth dir")
+	}
+
+	if _, ok := h.getCachedKiroQuota("dir-a", now.Add(kiroQuotaCacheTTL+time.Second)); ok {
+		t.Fatal("expected cache miss after ttl")
+	}
+}

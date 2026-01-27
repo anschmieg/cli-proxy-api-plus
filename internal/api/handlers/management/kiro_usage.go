@@ -27,6 +27,37 @@ type kiroQuotaEntry struct {
 	Error             string   `json:"error,omitempty"`
 }
 
+func (h *Handler) getCachedKiroQuota(authDir string, now time.Time) ([]kiroQuotaEntry, bool) {
+	if h == nil {
+		return nil, false
+	}
+	h.kiroQuotaCacheMu.Lock()
+	defer h.kiroQuotaCacheMu.Unlock()
+	if h.kiroQuotaCacheAuthDir != authDir {
+		return nil, false
+	}
+	if h.kiroQuotaCacheUntil.IsZero() || now.After(h.kiroQuotaCacheUntil) {
+		return nil, false
+	}
+	if len(h.kiroQuotaCacheData) == 0 {
+		return []kiroQuotaEntry{}, true
+	}
+	out := append([]kiroQuotaEntry(nil), h.kiroQuotaCacheData...)
+	return out, true
+}
+
+func (h *Handler) setCachedKiroQuota(authDir string, now time.Time, accounts []kiroQuotaEntry) {
+	if h == nil {
+		return
+	}
+	copied := append([]kiroQuotaEntry(nil), accounts...)
+	h.kiroQuotaCacheMu.Lock()
+	h.kiroQuotaCacheAuthDir = authDir
+	h.kiroQuotaCacheUntil = now.Add(kiroQuotaCacheTTL)
+	h.kiroQuotaCacheData = copied
+	h.kiroQuotaCacheMu.Unlock()
+}
+
 func epochSecondsFromUpstream(epoch float64) (int64, bool) {
 	if epoch <= 0 {
 		return 0, false
@@ -150,6 +181,12 @@ func (h *Handler) GetKiroQuotaStatus(c *gin.Context) {
 		return
 	}
 
+	now := time.Now().UTC()
+	if cached, ok := h.getCachedKiroQuota(authDir, now); ok {
+		c.JSON(200, gin.H{"accounts": cached})
+		return
+	}
+
 	var tokenFiles []string
 	_ = filepath.WalkDir(authDir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil || d == nil || d.IsDir() {
@@ -210,6 +247,8 @@ func (h *Handler) GetKiroQuotaStatus(c *gin.Context) {
 
 		accounts = append(accounts, entry)
 	}
+
+	h.setCachedKiroQuota(authDir, now, accounts)
 
 	c.JSON(200, gin.H{
 		"accounts": accounts,
