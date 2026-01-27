@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"io/fs"
+	"math"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -25,20 +27,107 @@ type kiroQuotaEntry struct {
 	Error             string   `json:"error,omitempty"`
 }
 
-func formatEpochMillis(epochMillis float64) string {
-	if epochMillis <= 0 {
-		return ""
+func epochSecondsFromUpstream(epoch float64) (int64, bool) {
+	if epoch <= 0 {
+		return 0, false
 	}
 	// Upstream has been observed to return either epoch seconds or epoch milliseconds.
 	// Use a simple heuristic: values >= 1e12 are milliseconds, otherwise seconds.
-	seconds := int64(epochMillis)
-	if epochMillis >= 1e12 {
-		seconds = int64(epochMillis / 1000)
+	seconds := int64(epoch)
+	if epoch >= 1e12 {
+		seconds = int64(epoch / 1000)
 	}
 	if seconds <= 0 {
+		return 0, false
+	}
+	return seconds, true
+}
+
+func formatEpochMillis(epochMillis float64) string {
+	seconds, ok := epochSecondsFromUpstream(epochMillis)
+	if !ok {
 		return ""
 	}
 	return time.Unix(seconds, 0).UTC().Format(time.RFC3339)
+}
+
+func usageValues(b kiroauth.UsageBreakdown) (current, limit float64) {
+	if b.CurrentUsageWithPrecision != nil {
+		current = *b.CurrentUsageWithPrecision
+	} else if b.CurrentUsage != nil {
+		current = float64(*b.CurrentUsage)
+	}
+	if b.UsageLimitWithPrecision != nil {
+		limit = *b.UsageLimitWithPrecision
+	} else if b.UsageLimit != nil {
+		limit = float64(*b.UsageLimit)
+	}
+	if current < 0 {
+		current = 0
+	}
+	if limit < 0 {
+		limit = 0
+	}
+	return current, limit
+}
+
+func aggregateUsage(breakdowns []kiroauth.UsageBreakdown) (current, limit float64) {
+	for _, breakdown := range breakdowns {
+		c, l := usageValues(breakdown)
+		if l <= 0 {
+			continue
+		}
+		current += c
+		limit += l
+	}
+	return current, limit
+}
+
+func chooseResetEpochSeconds(breakdowns []kiroauth.UsageBreakdown, fallback *float64, now time.Time) int64 {
+	nowSeconds := now.Unix()
+	var bestFuture int64
+	var bestAny int64
+
+	consider := func(epoch float64) {
+		seconds, ok := epochSecondsFromUpstream(epoch)
+		if !ok {
+			return
+		}
+		if seconds >= nowSeconds {
+			if bestFuture == 0 || seconds < bestFuture {
+				bestFuture = seconds
+			}
+			return
+		}
+		if bestAny == 0 || seconds < bestAny {
+			bestAny = seconds
+		}
+	}
+
+	for _, breakdown := range breakdowns {
+		if breakdown.NextDateReset != nil {
+			consider(*breakdown.NextDateReset)
+		}
+	}
+	if fallback != nil {
+		consider(*fallback)
+	}
+
+	if bestFuture != 0 {
+		return bestFuture
+	}
+	return bestAny
+}
+
+func usagePercent(current, limit float64) float64 {
+	if limit <= 0 {
+		return 0
+	}
+	percent := (current / limit) * 100
+	if math.IsNaN(percent) || math.IsInf(percent, 0) {
+		return 0
+	}
+	return percent
 }
 
 // GetKiroQuotaStatus returns per-account Kiro quota usage and model availability.
@@ -77,6 +166,7 @@ func (h *Handler) GetKiroQuotaStatus(c *gin.Context) {
 		c.JSON(200, gin.H{"accounts": []kiroQuotaEntry{}})
 		return
 	}
+	sort.Strings(tokenFiles)
 
 	cwClient := kiroauth.NewCodeWhispererClient(h.cfg, "")
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 15*time.Second)
@@ -106,24 +196,17 @@ func (h *Handler) GetKiroQuotaStatus(c *gin.Context) {
 		if usageResp.SubscriptionInfo != nil {
 			entry.SubscriptionTitle = usageResp.SubscriptionInfo.SubscriptionTitle
 		}
-		if len(usageResp.UsageBreakdownList) > 0 {
-			first := usageResp.UsageBreakdownList[0]
-			if first.CurrentUsageWithPrecision != nil {
-				entry.CurrentUsage = *first.CurrentUsageWithPrecision
-			}
-			if first.UsageLimitWithPrecision != nil {
-				entry.UsageLimit = *first.UsageLimitWithPrecision
-			}
-			if first.NextDateReset != nil {
-				entry.NextReset = formatEpochMillis(*first.NextDateReset)
-			}
+		entry.CurrentUsage, entry.UsageLimit = aggregateUsage(usageResp.UsageBreakdownList)
+
+		resetEpoch := chooseResetEpochSeconds(
+			usageResp.UsageBreakdownList,
+			usageResp.NextDateReset,
+			time.Now().UTC(),
+		)
+		if resetEpoch > 0 {
+			entry.NextReset = time.Unix(resetEpoch, 0).UTC().Format(time.RFC3339)
 		}
-		if entry.NextReset == "" && usageResp.NextDateReset != nil {
-			entry.NextReset = formatEpochMillis(*usageResp.NextDateReset)
-		}
-		if entry.UsageLimit > 0 {
-			entry.UsagePercent = (entry.CurrentUsage / entry.UsageLimit) * 100
-		}
+		entry.UsagePercent = usagePercent(entry.CurrentUsage, entry.UsageLimit)
 
 		accounts = append(accounts, entry)
 	}

@@ -1,6 +1,7 @@
 package management
 
 import (
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	kiroauth "github.com/router-for-me/CLIProxyAPI/v6/internal/auth/kiro"
 	"github.com/router-for-me/CLIProxyAPI/v6/internal/config"
 )
 
@@ -119,4 +121,93 @@ func TestFormatEpochMillis(t *testing.T) {
 	if got := formatEpochMillis(float64(ts.Unix())); got != want {
 		t.Fatalf("expected seconds %q, got %q", want, got)
 	}
+}
+
+func TestEpochSecondsFromUpstream(t *testing.T) {
+	t.Parallel()
+
+	seconds, ok := epochSecondsFromUpstream(0)
+	if ok || seconds != 0 {
+		t.Fatalf("expected zero/false for 0 input, got %d/%v", seconds, ok)
+	}
+
+	ts := time.Date(2026, time.January, 27, 13, 0, 0, 0, time.UTC)
+	want := ts.Unix()
+
+	if got, ok := epochSecondsFromUpstream(float64(ts.Unix())); !ok || got != want {
+		t.Fatalf("expected seconds %d, got %d (ok=%v)", want, got, ok)
+	}
+
+	if got, ok := epochSecondsFromUpstream(float64(ts.UnixMilli())); !ok || got != want {
+		t.Fatalf("expected millis -> seconds %d, got %d (ok=%v)", want, got, ok)
+	}
+}
+
+func TestAggregateUsage_UsesPrecisionAndInts(t *testing.T) {
+	t.Parallel()
+
+	breakdowns := []kiroauth.UsageBreakdown{
+		{
+			CurrentUsageWithPrecision: floatPtr(1.5),
+			UsageLimitWithPrecision:   floatPtr(10),
+		},
+		{
+			CurrentUsage: intPtr(2),
+			UsageLimit:   intPtr(5),
+		},
+		{
+			CurrentUsageWithPrecision: floatPtr(3),
+			UsageLimitWithPrecision:   floatPtr(0),
+		},
+	}
+
+	current, limit := aggregateUsage(breakdowns)
+	if current != 3.5 || limit != 15 {
+		t.Fatalf("expected current=3.5 limit=15, got current=%v limit=%v", current, limit)
+	}
+}
+
+func TestChooseResetEpochSeconds_PrefersEarliestFuture(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, time.January, 27, 13, 0, 0, 0, time.UTC)
+	past := float64(now.Add(-time.Hour).Unix())
+	futureLate := float64(now.Add(2 * time.Hour).Unix())
+	futureEarlyMillis := float64(now.Add(30 * time.Minute).UnixMilli())
+
+	breakdowns := []kiroauth.UsageBreakdown{
+		{NextDateReset: &past},
+		{NextDateReset: &futureLate},
+		{NextDateReset: &futureEarlyMillis},
+	}
+
+	got := chooseResetEpochSeconds(breakdowns, nil, now)
+	want := now.Add(30 * time.Minute).Unix()
+	if got != want {
+		t.Fatalf("expected earliest future reset %d, got %d", want, got)
+	}
+}
+
+func TestUsagePercent_Safe(t *testing.T) {
+	t.Parallel()
+
+	if got := usagePercent(1, 0); got != 0 {
+		t.Fatalf("expected 0 percent for zero limit, got %v", got)
+	}
+
+	if got := usagePercent(math.Inf(1), 1); got != 0 {
+		t.Fatalf("expected 0 percent for infinite usage, got %v", got)
+	}
+
+	if got := usagePercent(5, 20); got != 25 {
+		t.Fatalf("expected 25 percent, got %v", got)
+	}
+}
+
+func floatPtr(v float64) *float64 {
+	return &v
+}
+
+func intPtr(v int) *int {
+	return &v
 }
