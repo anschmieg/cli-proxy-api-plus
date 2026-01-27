@@ -25,6 +25,17 @@ type kiroQuotaEntry struct {
 	Error             string   `json:"error,omitempty"`
 }
 
+func formatEpochMillis(epochMillis float64) string {
+	if epochMillis <= 0 {
+		return ""
+	}
+	seconds := int64(epochMillis / 1000)
+	if seconds <= 0 {
+		return ""
+	}
+	return time.Unix(seconds, 0).UTC().Format(time.RFC3339)
+}
+
 // GetKiroQuotaStatus returns per-account Kiro quota usage and model availability.
 // It scans the configured auth directory for kiro-*.json files and queries
 // the upstream usage limits endpoint for each token.
@@ -90,9 +101,6 @@ func (h *Handler) GetKiroQuotaStatus(c *gin.Context) {
 		if usageResp.SubscriptionInfo != nil {
 			entry.SubscriptionTitle = usageResp.SubscriptionInfo.SubscriptionTitle
 		}
-		if usageResp.NextDateReset != nil {
-			entry.NextReset = fmt.Sprintf("%v", *usageResp.NextDateReset)
-		}
 		if len(usageResp.UsageBreakdownList) > 0 {
 			first := usageResp.UsageBreakdownList[0]
 			if first.CurrentUsageWithPrecision != nil {
@@ -101,6 +109,12 @@ func (h *Handler) GetKiroQuotaStatus(c *gin.Context) {
 			if first.UsageLimitWithPrecision != nil {
 				entry.UsageLimit = *first.UsageLimitWithPrecision
 			}
+			if first.NextDateReset != nil {
+				entry.NextReset = formatEpochMillis(*first.NextDateReset)
+			}
+		}
+		if entry.NextReset == "" && usageResp.NextDateReset != nil {
+			entry.NextReset = formatEpochMillis(*usageResp.NextDateReset)
 		}
 		if entry.UsageLimit > 0 {
 			entry.UsagePercent = (entry.CurrentUsage / entry.UsageLimit) * 100

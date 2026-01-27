@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/router-for-me/CLIProxyAPI/v6/internal/config"
@@ -98,5 +99,21 @@ func TestGetKiroQuotaStatus_AuthDirIsFile(t *testing.T) {
 	}
 	if want := "\"accounts\":[]"; !contains(w.Body.String(), want) {
 		t.Fatalf("expected response to contain %s, got %s", want, w.Body.String())
+	}
+}
+
+func TestFormatEpochMillis(t *testing.T) {
+	t.Parallel()
+
+	if got := formatEpochMillis(0); got != "" {
+		t.Fatalf("expected empty string for zero epoch, got %q", got)
+	}
+
+	ts := time.Date(2026, time.January, 27, 13, 0, 0, 0, time.UTC)
+	epochMillis := float64(ts.UnixMilli())
+	got := formatEpochMillis(epochMillis)
+	want := ts.Format(time.RFC3339)
+	if got != want {
+		t.Fatalf("expected %q, got %q", want, got)
 	}
 }
