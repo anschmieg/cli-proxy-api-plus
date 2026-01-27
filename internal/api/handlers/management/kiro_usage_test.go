@@ -110,10 +110,13 @@ func TestFormatEpochMillis(t *testing.T) {
 	}
 
 	ts := time.Date(2026, time.January, 27, 13, 0, 0, 0, time.UTC)
-	epochMillis := float64(ts.UnixMilli())
-	got := formatEpochMillis(epochMillis)
 	want := ts.Format(time.RFC3339)
-	if got != want {
-		t.Fatalf("expected %q, got %q", want, got)
+
+	if got := formatEpochMillis(float64(ts.UnixMilli())); got != want {
+		t.Fatalf("expected millis %q, got %q", want, got)
+	}
+
+	if got := formatEpochMillis(float64(ts.Unix())); got != want {
+		t.Fatalf("expected seconds %q, got %q", want, got)
 	}
 }

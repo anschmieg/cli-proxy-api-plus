@@ -29,7 +29,12 @@ func formatEpochMillis(epochMillis float64) string {
 	if epochMillis <= 0 {
 		return ""
 	}
-	seconds := int64(epochMillis / 1000)
+	// Upstream has been observed to return either epoch seconds or epoch milliseconds.
+	// Use a simple heuristic: values >= 1e12 are milliseconds, otherwise seconds.
+	seconds := int64(epochMillis)
+	if epochMillis >= 1e12 {
+		seconds = int64(epochMillis / 1000)
+	}
 	if seconds <= 0 {
 		return ""
 	}
