@@ -5,12 +5,23 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/router-for-me/CLIProxyAPI/v6/internal/runtime/geminicli"
 	coreauth "github.com/router-for-me/CLIProxyAPI/v6/sdk/cliproxy/auth"
 )
+
+// oauthProviderDefaultPriority steers routing when the same model is available
+// across multiple OAuth providers. Higher values are preferred.
+// Prefer first-class OAuth providers over Copilot fallbacks to reduce quota pressure.
+var oauthProviderDefaultPriority = map[string]int{
+	"kiro":           100,
+	"antigravity":    90,
+	"gemini-cli":     80,
+	"github-copilot": 10,
+}
 
 // FileSynthesizer generates Auth entries from OAuth JSON files.
 // It handles file-based authentication and Gemini virtual auth generation.
@@ -100,6 +111,12 @@ func (s *FileSynthesizer) Synthesize(ctx *SynthesisContext) ([]*coreauth.Auth, e
 			Metadata:  metadata,
 			CreatedAt: now,
 			UpdatedAt: now,
+		}
+		if priority, ok := resolveOAuthPriority(metadata, provider); ok && priority != 0 {
+			if a.Attributes == nil {
+				a.Attributes = make(map[string]string, 3)
+			}
+			a.Attributes["priority"] = strconv.Itoa(priority)
 		}
 		ApplyAuthExcludedModelsMeta(a, cfg, nil, "oauth")
 		if provider == "gemini-cli" {
@@ -221,4 +238,67 @@ func buildGeminiVirtualID(baseID, projectID string) string {
 	}
 	replacer := strings.NewReplacer("/", "_", "\\", "_", " ", "_")
 	return fmt.Sprintf("%s::%s", baseID, replacer.Replace(project))
+}
+
+func resolveOAuthPriority(metadata map[string]any, provider string) (int, bool) {
+	if metadata == nil {
+		return 0, false
+	}
+	if priority, ok := parsePriority(metadata["priority"]); ok {
+		return priority, true
+	}
+	defaultPriority, ok := oauthProviderDefaultPriority[strings.ToLower(strings.TrimSpace(provider))]
+	if !ok || defaultPriority == 0 {
+		return 0, false
+	}
+	return defaultPriority, true
+}
+
+func parsePriority(raw any) (int, bool) {
+	switch v := raw.(type) {
+	case nil:
+		return 0, false
+	case int:
+		return v, true
+	case int8:
+		return int(v), true
+	case int16:
+		return int(v), true
+	case int32:
+		return int(v), true
+	case int64:
+		return int(v), true
+	case uint:
+		return int(v), true
+	case uint8:
+		return int(v), true
+	case uint16:
+		return int(v), true
+	case uint32:
+		return int(v), true
+	case uint64:
+		return int(v), true
+	case float32:
+		return int(v), true
+	case float64:
+		return int(v), true
+	case json.Number:
+		parsed, err := v.Int64()
+		if err != nil {
+			return 0, false
+		}
+		return int(parsed), true
+	case string:
+		trimmed := strings.TrimSpace(v)
+		if trimmed == "" {
+			return 0, false
+		}
+		parsed, err := strconv.Atoi(trimmed)
+		if err != nil {
+			return 0, false
+		}
+		return parsed, true
+	default:
+		return 0, false
+	}
 }
