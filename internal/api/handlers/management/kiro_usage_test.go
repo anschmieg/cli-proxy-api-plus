@@ -66,4 +66,37 @@ func TestGetKiroQuotaStatus_AuthDirMissing(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected status 200 for missing auth dir, got %d", w.Code)
 	}
+	if want := "\"accounts\":[]"; !contains(w.Body.String(), want) {
+		t.Fatalf("expected response to contain %s, got %s", want, w.Body.String())
+	}
+}
+
+func TestGetKiroQuotaStatus_AuthDirIsFile(t *testing.T) {
+	t.Parallel()
+	gin.SetMode(gin.TestMode)
+
+	tmpDir := t.TempDir()
+	authFile := filepath.Join(tmpDir, "not-a-dir")
+	if err := os.WriteFile(authFile, []byte("x"), 0o600); err != nil {
+		t.Fatalf("failed to create auth file: %v", err)
+	}
+
+	cfg := &config.Config{
+		AuthDir: authFile,
+	}
+	h := NewHandler(cfg, filepath.Join(tmpDir, "config.yaml"), nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/v0/management/kiro/quota", nil)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = req
+
+	h.GetKiroQuotaStatus(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status 200 for auth-dir file, got %d", w.Code)
+	}
+	if want := "\"accounts\":[]"; !contains(w.Body.String(), want) {
+		t.Fatalf("expected response to contain %s, got %s", want, w.Body.String())
+	}
 }

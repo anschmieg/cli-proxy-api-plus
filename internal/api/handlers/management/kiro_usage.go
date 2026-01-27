@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io/fs"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -36,6 +37,11 @@ func (h *Handler) GetKiroQuotaStatus(c *gin.Context) {
 	authDir := strings.TrimSpace(h.cfg.AuthDir)
 	if authDir == "" {
 		c.JSON(400, gin.H{"error": "auth-dir is not configured"})
+		return
+	}
+
+	if stat, err := os.Stat(authDir); err != nil || !stat.IsDir() {
+		c.JSON(200, gin.H{"accounts": []kiroQuotaEntry{}})
 		return
 	}
 
