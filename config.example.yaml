@@ -241,11 +241,20 @@ oauth-model-alias:
     - name: "kiro-claude-sonnet-4-5"
       alias: "claude-sonnet-4.5"
       fork: true
+    - name: "kiro-claude-sonnet-4-5"
+      alias: "claude-sonnet-4-5"
+      fork: true
     - name: "kiro-claude-haiku-4-5"
       alias: "claude-haiku-4.5"
       fork: true
+    - name: "kiro-claude-haiku-4-5"
+      alias: "claude-haiku-4-5"
+      fork: true
     - name: "kiro-claude-opus-4-5"
       alias: "claude-opus-4.5"
+      fork: true
+    - name: "kiro-claude-opus-4-5"
+      alias: "claude-opus-4-5"
       fork: true
     - name: "kiro-claude-sonnet-4-5"
       alias: "claude-3-5-sonnet"
