@@ -71,6 +71,15 @@ type Config struct {
 	// RateLimit controls global API rate limiting.
 	RateLimit RateLimitConfig `yaml:"rate-limit" json:"rate-limit"`
 
+	// Profiles define per-request behavior such as system prompts, tool policy, and KB routing.
+	Profiles []Profile `yaml:"profiles,omitempty" json:"profiles,omitempty"`
+
+	// MCPServers defines MCP server connections for tool execution.
+	MCPServers []MCPServer `yaml:"mcp-servers,omitempty" json:"mcp-servers,omitempty"`
+
+	// ServerToolMappings maps Anthropic tool types or tool names to MCP tools.
+	ServerToolMappings []ServerToolMapping `yaml:"tool-mappings,omitempty" json:"tool-mappings,omitempty"`
+
 	// WebsocketAuth enables or disables authentication for the WebSocket API.
 	WebsocketAuth bool `yaml:"ws-auth" json:"ws-auth"`
 
@@ -179,6 +188,46 @@ type RateLimitConfig struct {
 	RequestsPerMinute float64 `yaml:"requests-per-minute" json:"requests-per-minute"`
 	// Burst is the maximum burst size.
 	Burst int `yaml:"burst" json:"burst"`
+}
+
+// ProfileTools configures which tools are available for a profile.
+// If Enabled is false, tools are disabled. If Allowlist is non-empty, only those
+// tools are permitted. If Enabled is nil and Allowlist is empty, tools are allowed.
+type ProfileTools struct {
+	Enabled   *bool    `yaml:"enabled,omitempty" json:"enabled,omitempty"`
+	Allowlist []string `yaml:"allowlist,omitempty" json:"allowlist,omitempty"`
+}
+
+// Profile defines per-request behavior such as system prompts, tool policy, and KB routing.
+type Profile struct {
+	ID            string       `yaml:"id" json:"id"`
+	Name          string       `yaml:"name" json:"name"`
+	Description   string       `yaml:"description,omitempty" json:"description,omitempty"`
+	DefaultModel  string       `yaml:"default-model,omitempty" json:"default-model,omitempty"`
+	Tools         ProfileTools `yaml:"tools,omitempty" json:"tools,omitempty"`
+	KnowledgeBase string       `yaml:"knowledge-base,omitempty" json:"knowledge-base,omitempty"`
+	SystemPrompt  string       `yaml:"system-prompt,omitempty" json:"system-prompt,omitempty"`
+	MCPServers    []string     `yaml:"mcp-servers,omitempty" json:"mcp-servers,omitempty"`
+}
+
+// MCPServer describes a tool server connection (local spawn or remote SSE).
+type MCPServer struct {
+	ID      string            `yaml:"id" json:"id"`
+	Name    string            `yaml:"name" json:"name"`
+	Type    string            `yaml:"type" json:"type"` // "local" or "sse"
+	Command string            `yaml:"command,omitempty" json:"command,omitempty"`
+	Args    []string          `yaml:"args,omitempty" json:"args,omitempty"`
+	Env     map[string]string `yaml:"env,omitempty" json:"env,omitempty"`
+	URL     string            `yaml:"url,omitempty" json:"url,omitempty"`
+	Enabled *bool             `yaml:"enabled,omitempty" json:"enabled,omitempty"`
+}
+
+// ServerToolMapping maps Anthropic tool types or tool names to MCP tools.
+type ServerToolMapping struct {
+	AnthropicToolType string `yaml:"anthropic-tool-type,omitempty" json:"anthropic-tool-type,omitempty"`
+	ToolName          string `yaml:"tool-name" json:"tool-name"`
+	MCPServerID       string `yaml:"mcp-server-id" json:"mcp-server-id"`
+	MCPToolName       string `yaml:"mcp-tool-name" json:"mcp-tool-name"`
 }
 
 // OAuthModelAlias defines a model ID alias for a specific channel.
@@ -675,6 +724,11 @@ func LoadConfigOptional(configFile string, optional bool) (*Config, error) {
 	// Sanitize OpenAI compatibility providers: drop entries without base-url
 	cfg.SanitizeOpenAICompatibility()
 
+	// Sanitize profiles, MCP servers, and tool mappings.
+	cfg.SanitizeProfiles()
+	cfg.SanitizeMCPServers()
+	cfg.SanitizeToolMappings()
+
 	// Normalize OAuth provider model exclusion map.
 	cfg.OAuthExcludedModels = NormalizeOAuthExcludedModels(cfg.OAuthExcludedModels)
 
@@ -814,6 +868,113 @@ func (cfg *Config) SanitizeOpenAICompatibility() {
 		out = append(out, e)
 	}
 	cfg.OpenAICompatibility = out
+}
+
+// SanitizeProfiles normalizes profile configuration and drops invalid entries.
+func (cfg *Config) SanitizeProfiles() {
+	if cfg == nil || len(cfg.Profiles) == 0 {
+		return
+	}
+	out := make([]Profile, 0, len(cfg.Profiles))
+	seen := make(map[string]struct{}, len(cfg.Profiles))
+	for i := range cfg.Profiles {
+		entry := cfg.Profiles[i]
+		entry.ID = strings.TrimSpace(entry.ID)
+		entry.Name = strings.TrimSpace(entry.Name)
+		entry.Description = strings.TrimSpace(entry.Description)
+		entry.DefaultModel = strings.TrimSpace(entry.DefaultModel)
+		entry.KnowledgeBase = strings.TrimSpace(entry.KnowledgeBase)
+		entry.SystemPrompt = strings.TrimSpace(entry.SystemPrompt)
+		entry.MCPServers = normalizeStringList(entry.MCPServers)
+		normalizeProfileTools(&entry.Tools)
+		if entry.ID == "" || entry.Name == "" {
+			continue
+		}
+		if _, exists := seen[entry.ID]; exists {
+			continue
+		}
+		seen[entry.ID] = struct{}{}
+		out = append(out, entry)
+	}
+	cfg.Profiles = out
+}
+
+// SanitizeMCPServers normalizes MCP server configuration and drops invalid entries.
+func (cfg *Config) SanitizeMCPServers() {
+	if cfg == nil || len(cfg.MCPServers) == 0 {
+		return
+	}
+	out := make([]MCPServer, 0, len(cfg.MCPServers))
+	seen := make(map[string]struct{}, len(cfg.MCPServers))
+	for i := range cfg.MCPServers {
+		entry := cfg.MCPServers[i]
+		entry.ID = strings.TrimSpace(entry.ID)
+		entry.Name = strings.TrimSpace(entry.Name)
+		entry.Type = strings.ToLower(strings.TrimSpace(entry.Type))
+		entry.Command = strings.TrimSpace(entry.Command)
+		entry.URL = strings.TrimSpace(entry.URL)
+		entry.Args = normalizeStringList(entry.Args)
+		entry.Env = normalizeEnvMap(entry.Env)
+		if entry.Enabled == nil {
+			enabled := true
+			entry.Enabled = &enabled
+		}
+		if entry.ID == "" || entry.Name == "" {
+			continue
+		}
+		switch entry.Type {
+		case "local":
+			if entry.Command == "" {
+				continue
+			}
+		case "sse":
+			if entry.URL == "" {
+				continue
+			}
+		default:
+			continue
+		}
+		if _, exists := seen[entry.ID]; exists {
+			continue
+		}
+		seen[entry.ID] = struct{}{}
+		out = append(out, entry)
+	}
+	cfg.MCPServers = out
+}
+
+// SanitizeToolMappings normalizes MCP tool mappings and drops invalid entries.
+func (cfg *Config) SanitizeToolMappings() {
+	if cfg == nil || len(cfg.ServerToolMappings) == 0 {
+		return
+	}
+	out := make([]ServerToolMapping, 0, len(cfg.ServerToolMappings))
+	seen := make(map[string]struct{}, len(cfg.ServerToolMappings))
+	for i := range cfg.ServerToolMappings {
+		entry := cfg.ServerToolMappings[i]
+		entry.AnthropicToolType = strings.TrimSpace(entry.AnthropicToolType)
+		entry.ToolName = strings.TrimSpace(entry.ToolName)
+		entry.MCPServerID = strings.TrimSpace(entry.MCPServerID)
+		entry.MCPToolName = strings.TrimSpace(entry.MCPToolName)
+		if entry.ToolName == "" && entry.AnthropicToolType == "" {
+			continue
+		}
+		if entry.MCPServerID == "" || entry.MCPToolName == "" {
+			continue
+		}
+		key := entry.ToolName
+		if key == "" {
+			key = "type:" + strings.ToLower(entry.AnthropicToolType)
+		} else {
+			key = strings.ToLower(key)
+		}
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, entry)
+	}
+	cfg.ServerToolMappings = out
 }
 
 // SanitizeCodexKeys removes Codex API key entries missing a BaseURL.
@@ -970,6 +1131,62 @@ func NormalizeHeaders(headers map[string]string) map[string]string {
 		return nil
 	}
 	return clean
+}
+
+func normalizeEnvMap(env map[string]string) map[string]string {
+	if len(env) == 0 {
+		return nil
+	}
+	clean := make(map[string]string, len(env))
+	for k, v := range env {
+		key := strings.TrimSpace(k)
+		val := strings.TrimSpace(v)
+		if key == "" {
+			continue
+		}
+		if val == "" {
+			continue
+		}
+		clean[key] = val
+	}
+	if len(clean) == 0 {
+		return nil
+	}
+	return clean
+}
+
+func normalizeStringList(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(values))
+	out := make([]string, 0, len(values))
+	for _, raw := range values {
+		trimmed := strings.TrimSpace(raw)
+		if trimmed == "" {
+			continue
+		}
+		if _, exists := seen[trimmed]; exists {
+			continue
+		}
+		seen[trimmed] = struct{}{}
+		out = append(out, trimmed)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func normalizeProfileTools(tools *ProfileTools) {
+	if tools == nil {
+		return
+	}
+	tools.Allowlist = normalizeStringList(tools.Allowlist)
+	if tools.Enabled == nil && len(tools.Allowlist) > 0 {
+		enabled := true
+		tools.Enabled = &enabled
+	}
 }
 
 // NormalizeExcludedModels trims, lowercases, and deduplicates model exclusion patterns.

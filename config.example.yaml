@@ -79,6 +79,45 @@ quota-exceeded:
 routing:
   strategy: "round-robin" # round-robin (default), fill-first
 
+# Profiles (system prompts, tool policy, knowledge base, MCP allowlist).
+# profiles:
+#   - id: "rag-bot"
+#     name: "RAG Bot"
+#     description: "Uses project knowledge base and a custom system prompt"
+#     default-model: "gemini-2.5-flash"
+#     system-prompt: "You are a helpful assistant."
+#     knowledge-base: "project-foo"
+#     tools:
+#       enabled: true
+#       allowlist:
+#         - "web_search"
+#     mcp-servers:
+#       - "local-tools"
+
+# MCP servers (local spawn or remote SSE).
+# mcp-servers:
+#   - id: "local-tools"
+#     name: "Local Tools"
+#     type: "local" # local | sse
+#     command: "/usr/local/bin/mcp-server"
+#     args:
+#       - "--port=9010"
+#     env:
+#       MCP_ENV: "prod"
+#     enabled: true
+#   - id: "remote-tools"
+#     name: "Remote Tools"
+#     type: "sse"
+#     url: "https://mcp.example.com/sse"
+#     enabled: true
+
+# Tool mappings (Anthropic tool types or tool names -> MCP tool).
+# tool-mappings:
+#   - anthropic-tool-type: "web_search_20250305"
+#     tool-name: "web_search"
+#     mcp-server-id: "remote-tools"
+#     mcp-tool-name: "search"
+
 # When true, enable authentication for the WebSocket API (/v1/ws).
 ws-auth: false
 
