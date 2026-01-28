@@ -75,7 +75,7 @@ func (h *ClaudeCodeAPIHandler) ClaudeMessages(c *gin.Context) {
 		})
 		return
 	}
-	rawJSON, errMsg := h.ApplyProfileToPayload(Claude, rawJSON)
+	rawJSON, errMsg := h.ApplyProfileToPayload(c.Request.Context(), Claude, rawJSON)
 	if errMsg != nil {
 		h.WriteErrorResponse(c, errMsg)
 		return
@@ -109,7 +109,7 @@ func (h *ClaudeCodeAPIHandler) ClaudeCountTokens(c *gin.Context) {
 		})
 		return
 	}
-	rawJSON, errMsg := h.ApplyProfileToPayload(Claude, rawJSON)
+	rawJSON, errMsg := h.ApplyProfileToPayload(c.Request.Context(), Claude, rawJSON)
 	if errMsg != nil {
 		h.WriteErrorResponse(c, errMsg)
 		return

@@ -79,6 +79,28 @@ quota-exceeded:
 routing:
   strategy: "round-robin" # round-robin (default), fill-first
 
+# Knowledge base (RAG) settings.
+# knowledge:
+#   enabled: true
+#   qdrant:
+#     url: "http://localhost:6333"
+#     collection: "ai_gateway_knowledge"
+#     vector-size: 1536
+#     distance: "Cosine"
+#     auto-create: true
+#     timeout-seconds: 10
+#   embeddings:
+#     base-url: "https://api.openai.com/v1"
+#     api-key: "sk-your-embedding-key"
+#     api-key-header: "Authorization"
+#     api-key-prefix: "Bearer"
+#     model: "text-embedding-3-small"
+#     timeout-seconds: 10
+#   search:
+#     limit: 5
+#     min-score: 0.65
+#     max-context-chars: 2500
+
 # Profiles (system prompts, tool policy, knowledge base, MCP allowlist).
 # profiles:
 #   - id: "rag-bot"

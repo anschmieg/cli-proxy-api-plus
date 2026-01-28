@@ -28,6 +28,7 @@ import (
 	ampmodule "github.com/router-for-me/CLIProxyAPI/v6/internal/api/modules/amp"
 	"github.com/router-for-me/CLIProxyAPI/v6/internal/auth/kiro"
 	"github.com/router-for-me/CLIProxyAPI/v6/internal/config"
+	"github.com/router-for-me/CLIProxyAPI/v6/internal/knowledge"
 	"github.com/router-for-me/CLIProxyAPI/v6/internal/logging"
 	"github.com/router-for-me/CLIProxyAPI/v6/internal/managementasset"
 	"github.com/router-for-me/CLIProxyAPI/v6/internal/misc"
@@ -267,6 +268,7 @@ func NewServer(cfg *config.Config, authManager *auth.Manager, accessManager *sdk
 		envManagementSecret: envManagementSecret,
 		wsRoutes:            make(map[string]struct{}),
 	}
+	s.handlers.UpdateKnowledgeManager(buildKnowledgeManager(cfg))
 	s.wsAuthEnabled.Store(cfg.WebsocketAuth)
 	// Save initial YAML snapshot
 	s.oldConfigYaml, _ = yaml.Marshal(cfg)
@@ -918,6 +920,43 @@ func sanitizeBaseURL(raw string) string {
 	return parsed.String()
 }
 
+func buildKnowledgeManager(cfg *config.Config) *knowledge.Manager {
+	if cfg == nil {
+		return nil
+	}
+	k := cfg.Knowledge
+	if !k.Enabled {
+		return nil
+	}
+	if k.Qdrant.URL == "" || k.Embeddings.BaseURL == "" || k.Embeddings.APIKey == "" {
+		return nil
+	}
+	autoCreate := true
+	if k.Qdrant.AutoCreate != nil {
+		autoCreate = *k.Qdrant.AutoCreate
+	}
+	store := knowledge.NewQdrantStore(knowledge.QdrantOptions{
+		BaseURL:    k.Qdrant.URL,
+		Collection: k.Qdrant.Collection,
+		VectorSize: k.Qdrant.VectorSize,
+		Distance:   k.Qdrant.Distance,
+		AutoCreate: autoCreate,
+		Timeout:    time.Duration(k.Qdrant.TimeoutSeconds) * time.Second,
+	})
+	embedder := knowledge.NewOpenAIEmbedder(knowledge.OpenAIEmbedderOptions{
+		BaseURL:      k.Embeddings.BaseURL,
+		APIKey:       k.Embeddings.APIKey,
+		APIKeyHeader: k.Embeddings.APIKeyHeader,
+		APIKeyPrefix: k.Embeddings.APIKeyPrefix,
+		Model:        k.Embeddings.Model,
+		Timeout:      time.Duration(k.Embeddings.TimeoutSeconds) * time.Second,
+	})
+	if store == nil || embedder == nil {
+		return nil
+	}
+	return knowledge.NewManager(store, embedder)
+}
+
 func copyProxyHeaders(dst, src http.Header) {
 	if dst == nil || src == nil {
 		return
@@ -1329,6 +1368,7 @@ func (s *Server) UpdateClients(cfg *config.Config) {
 	s.oldConfigYaml, _ = yaml.Marshal(cfg)
 
 	s.handlers.UpdateConfig(cfg)
+	s.handlers.UpdateKnowledgeManager(buildKnowledgeManager(cfg))
 
 	if !cfg.RemoteManagement.DisableControlPanel {
 		staticDir := managementasset.StaticDir(s.configFilePath)

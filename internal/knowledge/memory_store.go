@@ -34,7 +34,7 @@ func (s *MemoryStore) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
-func (s *MemoryStore) Search(ctx context.Context, vector []float32, limit int) ([]Document, error) {
+func (s *MemoryStore) Search(ctx context.Context, vector []float32, limit int, filter map[string]string) ([]Document, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -49,7 +49,11 @@ func (s *MemoryStore) Search(ctx context.Context, vector []float32, limit int) (
 		if len(doc.Vector) != len(vector) {
 			continue
 		}
+		if !matchesFilter(doc.Metadata, filter) {
+			continue
+		}
 		score := cosineSimilarity(doc.Vector, vector)
+		doc.Score = score
 		results = append(results, result{doc: doc, score: score})
 	}
 
@@ -66,6 +70,30 @@ func (s *MemoryStore) Search(ctx context.Context, vector []float32, limit int) (
 		out[i] = r.doc
 	}
 	return out, nil
+}
+
+func matchesFilter(metadata map[string]interface{}, filter map[string]string) bool {
+	if len(filter) == 0 {
+		return true
+	}
+	if len(metadata) == 0 {
+		return false
+	}
+	for key, expected := range filter {
+		value, ok := metadata[key]
+		if !ok {
+			return false
+		}
+		switch typed := value.(type) {
+		case string:
+			if typed != expected {
+				return false
+			}
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 func cosineSimilarity(a, b []float32) float32 {

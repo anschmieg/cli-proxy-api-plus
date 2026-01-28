@@ -8,6 +8,7 @@ type Document struct {
 	Content  string                 `json:"content"`
 	Metadata map[string]interface{} `json:"metadata"`
 	Vector   []float32              `json:"vector,omitempty"`
+	Score    float32                `json:"score,omitempty"`
 }
 
 // Store defines the interface for a knowledge base storage.
@@ -15,7 +16,7 @@ type Store interface {
 	// Add adds documents to the store.
 	Add(ctx context.Context, docs []Document) error
 	// Search finds relevant documents for a query vector.
-	Search(ctx context.Context, vector []float32, limit int) ([]Document, error)
+	Search(ctx context.Context, vector []float32, limit int, filter map[string]string) ([]Document, error)
 	// Delete removes a document by ID.
 	Delete(ctx context.Context, id string) error
 }
@@ -46,7 +47,7 @@ func (m *Manager) AddText(ctx context.Context, id string, text string, metadata 
 	if len(vectors) == 0 {
 		return nil
 	}
-	
+
 	doc := Document{
 		ID:       id,
 		Content:  text,
@@ -56,7 +57,7 @@ func (m *Manager) AddText(ctx context.Context, id string, text string, metadata 
 	return m.store.Add(ctx, []Document{doc})
 }
 
-func (m *Manager) Query(ctx context.Context, query string, limit int) ([]Document, error) {
+func (m *Manager) Query(ctx context.Context, query string, limit int, filter map[string]string) ([]Document, error) {
 	vectors, err := m.embedder.Embed(ctx, []string{query})
 	if err != nil {
 		return nil, err
@@ -64,6 +65,6 @@ func (m *Manager) Query(ctx context.Context, query string, limit int) ([]Documen
 	if len(vectors) == 0 {
 		return nil, nil
 	}
-	
-	return m.store.Search(ctx, vectors[0], limit)
+
+	return m.store.Search(ctx, vectors[0], limit, filter)
 }

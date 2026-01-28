@@ -74,6 +74,9 @@ type Config struct {
 	// Profiles define per-request behavior such as system prompts, tool policy, and KB routing.
 	Profiles []Profile `yaml:"profiles,omitempty" json:"profiles,omitempty"`
 
+	// Knowledge configures RAG/knowledge base integration.
+	Knowledge KnowledgeConfig `yaml:"knowledge" json:"knowledge"`
+
 	// MCPServers defines MCP server connections for tool execution.
 	MCPServers []MCPServer `yaml:"mcp-servers,omitempty" json:"mcp-servers,omitempty"`
 
@@ -208,6 +211,41 @@ type Profile struct {
 	KnowledgeBase string       `yaml:"knowledge-base,omitempty" json:"knowledge-base,omitempty"`
 	SystemPrompt  string       `yaml:"system-prompt,omitempty" json:"system-prompt,omitempty"`
 	MCPServers    []string     `yaml:"mcp-servers,omitempty" json:"mcp-servers,omitempty"`
+}
+
+// KnowledgeConfig configures knowledge base (RAG) search behavior.
+type KnowledgeConfig struct {
+	Enabled    bool                    `yaml:"enabled" json:"enabled"`
+	Qdrant     KnowledgeQdrantConfig   `yaml:"qdrant" json:"qdrant"`
+	Embeddings KnowledgeEmbedderConfig `yaml:"embeddings" json:"embeddings"`
+	Search     KnowledgeSearchConfig   `yaml:"search" json:"search"`
+}
+
+// KnowledgeQdrantConfig configures Qdrant connection settings.
+type KnowledgeQdrantConfig struct {
+	URL            string `yaml:"url" json:"url"`
+	Collection     string `yaml:"collection" json:"collection"`
+	VectorSize     int    `yaml:"vector-size" json:"vector-size"`
+	Distance       string `yaml:"distance" json:"distance"`
+	AutoCreate     *bool  `yaml:"auto-create,omitempty" json:"auto-create,omitempty"`
+	TimeoutSeconds int    `yaml:"timeout-seconds" json:"timeout-seconds"`
+}
+
+// KnowledgeEmbedderConfig configures the embeddings provider (OpenAI-compatible).
+type KnowledgeEmbedderConfig struct {
+	BaseURL        string `yaml:"base-url" json:"base-url"`
+	APIKey         string `yaml:"api-key" json:"api-key"`
+	APIKeyHeader   string `yaml:"api-key-header" json:"api-key-header"`
+	APIKeyPrefix   string `yaml:"api-key-prefix" json:"api-key-prefix"`
+	Model          string `yaml:"model" json:"model"`
+	TimeoutSeconds int    `yaml:"timeout-seconds" json:"timeout-seconds"`
+}
+
+// KnowledgeSearchConfig controls knowledge base query behavior.
+type KnowledgeSearchConfig struct {
+	Limit           int     `yaml:"limit" json:"limit"`
+	MinScore        float64 `yaml:"min-score" json:"min-score"`
+	MaxContextChars int     `yaml:"max-context-chars" json:"max-context-chars"`
 }
 
 // MCPServer describes a tool server connection (local spawn or remote SSE).
@@ -726,6 +764,7 @@ func LoadConfigOptional(configFile string, optional bool) (*Config, error) {
 
 	// Sanitize profiles, MCP servers, and tool mappings.
 	cfg.SanitizeProfiles()
+	cfg.SanitizeKnowledge()
 	cfg.SanitizeMCPServers()
 	cfg.SanitizeToolMappings()
 
@@ -897,6 +936,68 @@ func (cfg *Config) SanitizeProfiles() {
 		out = append(out, entry)
 	}
 	cfg.Profiles = out
+}
+
+// SanitizeKnowledge normalizes knowledge base configuration defaults.
+func (cfg *Config) SanitizeKnowledge() {
+	if cfg == nil {
+		return
+	}
+
+	cfg.Knowledge.Qdrant.URL = strings.TrimSpace(cfg.Knowledge.Qdrant.URL)
+	cfg.Knowledge.Qdrant.Collection = strings.TrimSpace(cfg.Knowledge.Qdrant.Collection)
+	cfg.Knowledge.Qdrant.Distance = strings.TrimSpace(cfg.Knowledge.Qdrant.Distance)
+	cfg.Knowledge.Embeddings.BaseURL = strings.TrimSpace(cfg.Knowledge.Embeddings.BaseURL)
+	cfg.Knowledge.Embeddings.APIKey = strings.TrimSpace(cfg.Knowledge.Embeddings.APIKey)
+	cfg.Knowledge.Embeddings.APIKeyHeader = strings.TrimSpace(cfg.Knowledge.Embeddings.APIKeyHeader)
+	cfg.Knowledge.Embeddings.APIKeyPrefix = strings.TrimSpace(cfg.Knowledge.Embeddings.APIKeyPrefix)
+	cfg.Knowledge.Embeddings.Model = strings.TrimSpace(cfg.Knowledge.Embeddings.Model)
+
+	if cfg.Knowledge.Qdrant.Collection == "" {
+		cfg.Knowledge.Qdrant.Collection = "ai_gateway_knowledge"
+	}
+	if cfg.Knowledge.Qdrant.VectorSize <= 0 {
+		cfg.Knowledge.Qdrant.VectorSize = 1536
+	}
+	if cfg.Knowledge.Qdrant.Distance == "" {
+		cfg.Knowledge.Qdrant.Distance = "Cosine"
+	}
+	if cfg.Knowledge.Qdrant.AutoCreate == nil {
+		autoCreate := true
+		cfg.Knowledge.Qdrant.AutoCreate = &autoCreate
+	}
+	if cfg.Knowledge.Qdrant.TimeoutSeconds <= 0 {
+		cfg.Knowledge.Qdrant.TimeoutSeconds = 10
+	}
+
+	if cfg.Knowledge.Embeddings.Model == "" {
+		cfg.Knowledge.Embeddings.Model = "text-embedding-3-small"
+	}
+	if cfg.Knowledge.Embeddings.TimeoutSeconds <= 0 {
+		cfg.Knowledge.Embeddings.TimeoutSeconds = 10
+	}
+	if cfg.Knowledge.Embeddings.APIKeyHeader == "" {
+		cfg.Knowledge.Embeddings.APIKeyHeader = "Authorization"
+	}
+	if cfg.Knowledge.Embeddings.APIKeyPrefix == "" {
+		cfg.Knowledge.Embeddings.APIKeyPrefix = "Bearer"
+	}
+
+	if cfg.Knowledge.Search.Limit <= 0 {
+		cfg.Knowledge.Search.Limit = 5
+	}
+	if cfg.Knowledge.Search.MinScore <= 0 {
+		cfg.Knowledge.Search.MinScore = 0.65
+	}
+	if cfg.Knowledge.Search.MaxContextChars <= 0 {
+		cfg.Knowledge.Search.MaxContextChars = 2500
+	}
+
+	if !cfg.Knowledge.Enabled {
+		if cfg.Knowledge.Qdrant.URL != "" || cfg.Knowledge.Embeddings.BaseURL != "" {
+			cfg.Knowledge.Enabled = true
+		}
+	}
 }
 
 // SanitizeMCPServers normalizes MCP server configuration and drops invalid entries.

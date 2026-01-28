@@ -15,6 +15,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/router-for-me/CLIProxyAPI/v6/internal/interfaces"
+	"github.com/router-for-me/CLIProxyAPI/v6/internal/knowledge"
 	"github.com/router-for-me/CLIProxyAPI/v6/internal/logging"
 	"github.com/router-for-me/CLIProxyAPI/v6/internal/thinking"
 	"github.com/router-for-me/CLIProxyAPI/v6/internal/util"
@@ -181,6 +182,9 @@ type BaseAPIHandler struct {
 
 	// FullCfg holds the full configuration when available (includes profiles).
 	FullCfg *config.Config
+
+	// KnowledgeManager handles knowledge base search when configured.
+	KnowledgeManager *knowledge.Manager
 }
 
 // NewBaseAPIHandlers creates a new API handlers instance.
@@ -230,6 +234,11 @@ func (h *BaseAPIHandler) UpdateConfig(cfg *config.Config) {
 	}
 	h.Cfg = &cfg.SDKConfig
 	h.FullCfg = cfg
+}
+
+// UpdateKnowledgeManager refreshes the knowledge manager used for profile RAG.
+func (h *BaseAPIHandler) UpdateKnowledgeManager(manager *knowledge.Manager) {
+	h.KnowledgeManager = manager
 }
 
 // GetAlt extracts the 'alt' parameter from the request query string.

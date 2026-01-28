@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -16,7 +17,7 @@ import (
 // ApplyProfileToPayload applies profile-driven routing and payload updates.
 // It supports model@profile suffixes, profile-as-model default routing, system prompts,
 // and tool allow/deny policies.
-func (h *BaseAPIHandler) ApplyProfileToPayload(handlerType string, rawJSON []byte) ([]byte, *interfaces.ErrorMessage) {
+func (h *BaseAPIHandler) ApplyProfileToPayload(ctx context.Context, handlerType string, rawJSON []byte) ([]byte, *interfaces.ErrorMessage) {
 	if h == nil || h.FullCfg == nil || len(h.FullCfg.Profiles) == 0 {
 		return rawJSON, nil
 	}
@@ -43,6 +44,10 @@ func (h *BaseAPIHandler) ApplyProfileToPayload(handlerType string, rawJSON []byt
 		} else {
 			updated = applyOpenAISystemPrompt(updated, prompt)
 		}
+	}
+
+	if kb := strings.TrimSpace(profile.KnowledgeBase); kb != "" {
+		updated = applyKnowledgeBase(ctx, handlerType, updated, kb, h)
 	}
 
 	updated = applyProfileTools(updated, profile.Tools)

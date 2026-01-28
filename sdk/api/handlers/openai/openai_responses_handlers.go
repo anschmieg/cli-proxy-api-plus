@@ -81,7 +81,7 @@ func (h *OpenAIResponsesAPIHandler) Responses(c *gin.Context) {
 		})
 		return
 	}
-	rawJSON, errMsg := h.ApplyProfileToPayload(OpenaiResponse, rawJSON)
+	rawJSON, errMsg := h.ApplyProfileToPayload(c.Request.Context(), OpenaiResponse, rawJSON)
 	if errMsg != nil {
 		h.WriteErrorResponse(c, errMsg)
 		return

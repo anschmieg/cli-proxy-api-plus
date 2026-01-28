@@ -108,7 +108,7 @@ func (h *OpenAIAPIHandler) ChatCompletions(c *gin.Context) {
 		})
 		return
 	}
-	rawJSON, errMsg := h.ApplyProfileToPayload(OpenAI, rawJSON)
+	rawJSON, errMsg := h.ApplyProfileToPayload(c.Request.Context(), OpenAI, rawJSON)
 	if errMsg != nil {
 		h.WriteErrorResponse(c, errMsg)
 		return
@@ -185,7 +185,7 @@ func (h *OpenAIAPIHandler) Completions(c *gin.Context) {
 		})
 		return
 	}
-	rawJSON, errMsg := h.ApplyProfileToPayload(OpenAI, rawJSON)
+	rawJSON, errMsg := h.ApplyProfileToPayload(c.Request.Context(), OpenAI, rawJSON)
 	if errMsg != nil {
 		h.WriteErrorResponse(c, errMsg)
 		return
