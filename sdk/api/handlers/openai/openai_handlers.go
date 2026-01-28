@@ -108,6 +108,11 @@ func (h *OpenAIAPIHandler) ChatCompletions(c *gin.Context) {
 		})
 		return
 	}
+	rawJSON, errMsg := h.ApplyProfileToPayload(OpenAI, rawJSON)
+	if errMsg != nil {
+		h.WriteErrorResponse(c, errMsg)
+		return
+	}
 
 	// Check if the client requested a streaming response.
 	streamResult := gjson.GetBytes(rawJSON, "stream")
@@ -178,6 +183,11 @@ func (h *OpenAIAPIHandler) Completions(c *gin.Context) {
 				Type:    "invalid_request_error",
 			},
 		})
+		return
+	}
+	rawJSON, errMsg := h.ApplyProfileToPayload(OpenAI, rawJSON)
+	if errMsg != nil {
+		h.WriteErrorResponse(c, errMsg)
 		return
 	}
 

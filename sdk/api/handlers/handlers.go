@@ -178,6 +178,9 @@ type BaseAPIHandler struct {
 
 	// Cfg holds the current application configuration.
 	Cfg *config.SDKConfig
+
+	// FullCfg holds the full configuration when available (includes profiles).
+	FullCfg *config.Config
 }
 
 // NewBaseAPIHandlers creates a new API handlers instance.
@@ -197,6 +200,19 @@ func NewBaseAPIHandlers(cfg *config.SDKConfig, authManager *coreauth.Manager) *B
 	return h
 }
 
+// NewBaseAPIHandlersWithConfig creates a new API handlers instance using the full config.
+// This variant preserves access to profile and management settings that are not in SDKConfig.
+func NewBaseAPIHandlersWithConfig(cfg *config.Config, authManager *coreauth.Manager) *BaseAPIHandler {
+	if cfg == nil {
+		return NewBaseAPIHandlers(nil, authManager)
+	}
+	return &BaseAPIHandler{
+		Cfg:         &cfg.SDKConfig,
+		FullCfg:     cfg,
+		AuthManager: authManager,
+	}
+}
+
 // UpdateClients updates the handlers' client list and configuration.
 // This method is called when the configuration or authentication tokens change.
 //
@@ -204,6 +220,17 @@ func NewBaseAPIHandlers(cfg *config.SDKConfig, authManager *coreauth.Manager) *B
 //   - clients: The new slice of AI service clients
 //   - cfg: The new application configuration
 func (h *BaseAPIHandler) UpdateClients(cfg *config.SDKConfig) { h.Cfg = cfg }
+
+// UpdateConfig refreshes the full config snapshot used by handlers.
+func (h *BaseAPIHandler) UpdateConfig(cfg *config.Config) {
+	if cfg == nil {
+		h.Cfg = nil
+		h.FullCfg = nil
+		return
+	}
+	h.Cfg = &cfg.SDKConfig
+	h.FullCfg = cfg
+}
 
 // GetAlt extracts the 'alt' parameter from the request query string.
 // It checks both 'alt' and '$alt' parameters and returns the appropriate value.
