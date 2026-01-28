@@ -20,6 +20,7 @@ type OAuthModelAlias = internalconfig.OAuthModelAlias
 type PayloadConfig = internalconfig.PayloadConfig
 type PayloadRule = internalconfig.PayloadRule
 type PayloadModelRule = internalconfig.PayloadModelRule
+type Profile = internalconfig.Profile
 
 type GeminiKey = internalconfig.GeminiKey
 type AIStudioKey = internalconfig.AIStudioKey
