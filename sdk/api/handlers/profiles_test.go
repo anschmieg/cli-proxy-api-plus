@@ -1,9 +1,13 @@
 package handlers
 
 import (
+	"context"
+	"strings"
 	"testing"
 
 	internalconfig "github.com/router-for-me/CLIProxyAPI/v6/internal/config"
+	"github.com/router-for-me/CLIProxyAPI/v6/internal/knowledge"
+	"github.com/router-for-me/CLIProxyAPI/v6/sdk/config"
 	"github.com/tidwall/gjson"
 )
 
@@ -147,5 +151,74 @@ func TestApplyProfileTools_FunctionsAllowlist(t *testing.T) {
 	}
 	if gjson.GetBytes(updated, "function_call").String() != "auto" {
 		t.Fatalf("expected function_call retained")
+	}
+}
+
+type staticEmbedder struct {
+	vector []float32
+}
+
+func (e *staticEmbedder) Embed(ctx context.Context, texts []string) ([][]float32, error) {
+	out := make([][]float32, len(texts))
+	for i := range texts {
+		out[i] = e.vector
+	}
+	return out, nil
+}
+
+func TestApplyProfileToPayload_KnowledgeBase(t *testing.T) {
+	store := knowledge.NewMemoryStore()
+	embedder := &staticEmbedder{vector: []float32{1, 0}}
+	manager := knowledge.NewManager(store, embedder)
+
+	err := store.Add(context.Background(), []knowledge.Document{
+		{
+			ID:      "doc-1",
+			Content: "Reference content",
+			Vector:  []float32{1, 0},
+			Metadata: map[string]interface{}{
+				"project":  "project-1",
+				"filename": "file.txt",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("failed to seed store: %v", err)
+	}
+
+	cfg := &config.Config{
+		Knowledge: config.KnowledgeConfig{
+			Enabled: true,
+			Search: config.KnowledgeSearchConfig{
+				Limit:           5,
+				MinScore:        0.1,
+				MaxContextChars: 500,
+			},
+		},
+		Profiles: []config.Profile{
+			{
+				ID:            "rag",
+				DefaultModel:  "gpt-4o",
+				KnowledgeBase: "project-1",
+			},
+		},
+	}
+
+	handler := NewBaseAPIHandlersWithConfig(cfg, nil)
+	handler.UpdateKnowledgeManager(manager)
+
+	raw := []byte(`{"model":"gpt-4o@rag","messages":[{"role":"user","content":"hello"}]}`)
+	updated, errMsg := handler.ApplyProfileToPayload(context.Background(), "openai", raw)
+	if errMsg != nil {
+		t.Fatalf("unexpected error: %v", errMsg)
+	}
+
+	if model := gjson.GetBytes(updated, "model").String(); model != "gpt-4o" {
+		t.Fatalf("expected upstream model, got %q", model)
+	}
+
+	content := gjson.GetBytes(updated, "messages.0.content").String()
+	if content == "" || !strings.Contains(content, "knowledge_base") {
+		t.Fatalf("expected knowledge base content in system message")
 	}
 }
