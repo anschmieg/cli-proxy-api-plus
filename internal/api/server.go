@@ -211,6 +211,7 @@ func NewServer(cfg *config.Config, authManager *auth.Manager, accessManager *sdk
 	}
 
 	// Add middleware
+	engine.Use(middleware.ManualApprovalMiddleware())
 	engine.Use(logging.GinLogrusLogger())
 	engine.Use(logging.GinLogrusRecovery())
 	if cfg.RateLimit.Enabled {
@@ -360,7 +361,7 @@ func (s *Server) setupRoutes() {
 		v1.GET("/models", modelsHandler)
 		v1.POST("/chat/completions", openaiHandlers.ChatCompletions)
 		v1.POST("/completions", openaiHandlers.Completions)
-		v1.POST("/embeddings", s.unsupportedOpenAIEndpoint("embeddings"))
+		v1.POST("/embeddings", openaiHandlers.Embeddings)
 		v1.POST("/audio/*path", s.ttsAudioProxy)
 		v1.GET("/audio/*path", s.ttsAudioProxy)
 		v1.POST("/messages", claudeCodeHandlers.ClaudeMessages)
@@ -730,6 +731,12 @@ func (s *Server) registerManagementRoutes() {
 		mgmt.PATCH("/auth-files/status", s.mgmt.PatchAuthFileStatus)
 		mgmt.POST("/vertex/import", s.mgmt.ImportVertexCredential)
 
+		// Knowledge base file management
+		mgmt.GET("/knowledge/projects", s.listKnowledgeProjects)
+		mgmt.GET("/knowledge/projects/:project/files", s.listKnowledgeFiles)
+		mgmt.DELETE("/knowledge/projects/:project", s.deleteKnowledgeProject)
+		mgmt.DELETE("/knowledge/projects/:project/files/:fileId", s.deleteKnowledgeFile)
+
 		mgmt.GET("/anthropic-auth-url", s.mgmt.RequestAnthropicToken)
 		mgmt.GET("/codex-auth-url", s.mgmt.RequestCodexToken)
 		mgmt.GET("/gemini-cli-auth-url", s.mgmt.RequestGeminiCLIToken)
@@ -741,6 +748,8 @@ func (s *Server) registerManagementRoutes() {
 		mgmt.GET("/github-auth-url", s.mgmt.RequestGitHubToken)
 		mgmt.POST("/oauth-callback", s.mgmt.PostOAuthCallback)
 		mgmt.GET("/get-auth-status", s.mgmt.GetAuthStatus)
+
+		mgmt.GET("/openrouter/usage", s.mgmt.GetOpenRouterUsage)
 	}
 }
 
@@ -1396,6 +1405,7 @@ func (s *Server) UpdateClients(cfg *config.Config) {
 	}
 	authEntries := util.CountAuthFiles(context.Background(), tokenStore)
 	geminiAPIKeyCount := len(cfg.GeminiKey)
+	aiStudioKeyCount := len(cfg.AIStudioKey)
 	claudeAPIKeyCount := len(cfg.ClaudeKey)
 	codexAPIKeyCount := len(cfg.CodexKey)
 	vertexAICompatCount := len(cfg.VertexCompatAPIKey)
@@ -1405,11 +1415,12 @@ func (s *Server) UpdateClients(cfg *config.Config) {
 		openAICompatCount += len(entry.APIKeyEntries)
 	}
 
-	total := authEntries + geminiAPIKeyCount + claudeAPIKeyCount + codexAPIKeyCount + vertexAICompatCount + openAICompatCount
-	fmt.Printf("server clients and configuration updated: %d clients (%d auth entries + %d Gemini API keys + %d Claude API keys + %d Codex keys + %d Vertex-compat + %d OpenAI-compat)\n",
+	total := authEntries + geminiAPIKeyCount + aiStudioKeyCount + claudeAPIKeyCount + codexAPIKeyCount + vertexAICompatCount + openAICompatCount
+	fmt.Printf("server clients and configuration updated: %d clients (%d auth entries + %d Gemini API keys + %d AI Studio API keys + %d Claude API keys + %d Codex keys + %d Vertex-compat + %d OpenAI-compat)\n",
 		total,
 		authEntries,
 		geminiAPIKeyCount,
+		aiStudioKeyCount,
 		claudeAPIKeyCount,
 		codexAPIKeyCount,
 		vertexAICompatCount,
@@ -1459,4 +1470,77 @@ func AuthMiddleware(manager *sdkaccess.Manager) gin.HandlerFunc {
 			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Authentication service error"})
 		}
 	}
+}
+
+func (s *Server) listKnowledgeProjects(c *gin.Context) {
+	if s.handlers.KnowledgeManager == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Knowledge base not enabled"})
+		return
+	}
+	projects, err := s.handlers.KnowledgeManager.ListProjects(c.Request.Context(), 100)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"projects": projects})
+}
+
+func (s *Server) listKnowledgeFiles(c *gin.Context) {
+	if s.handlers.KnowledgeManager == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Knowledge base not enabled"})
+		return
+	}
+	project := c.Param("project")
+	if project == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Project is required"})
+		return
+	}
+	files, err := s.handlers.KnowledgeManager.ListFiles(c.Request.Context(), project, 1000)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"files": files})
+}
+
+func (s *Server) deleteKnowledgeProject(c *gin.Context) {
+	if s.handlers.KnowledgeManager == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Knowledge base not enabled"})
+		return
+	}
+	project := c.Param("project")
+	if project == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Project is required"})
+		return
+	}
+	err := s.handlers.KnowledgeManager.DeleteByFilter(c.Request.Context(), map[string]string{
+		"project": project,
+	})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
+func (s *Server) deleteKnowledgeFile(c *gin.Context) {
+	if s.handlers.KnowledgeManager == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Knowledge base not enabled"})
+		return
+	}
+	project := c.Param("project")
+	fileID := c.Param("fileId")
+	if project == "" || fileID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Project and File ID are required"})
+		return
+	}
+	err := s.handlers.KnowledgeManager.DeleteByFilter(c.Request.Context(), map[string]string{
+		"project": project,
+		"fileId":  fileID,
+	})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }

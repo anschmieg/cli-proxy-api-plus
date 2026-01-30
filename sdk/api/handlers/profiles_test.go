@@ -158,6 +158,10 @@ type staticEmbedder struct {
 	vector []float32
 }
 
+func (e *staticEmbedder) GetModel() string {
+	return "static"
+}
+
 func (e *staticEmbedder) Embed(ctx context.Context, texts []string) ([][]float32, error) {
 	out := make([][]float32, len(texts))
 	for i := range texts {

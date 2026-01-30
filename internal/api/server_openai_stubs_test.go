@@ -17,15 +17,15 @@ func TestOpenAIEmbeddingsUnsupportedEndpoint(t *testing.T) {
 	rr := httptest.NewRecorder()
 	server.engine.ServeHTTP(rr, req)
 
-	if rr.Code != http.StatusNotImplemented {
-		t.Fatalf("unexpected status code: got %d want %d; body=%s", rr.Code, http.StatusNotImplemented, rr.Body.String())
+	if rr.Code != http.StatusServiceUnavailable {
+		t.Fatalf("unexpected status code: got %d want %d; body=%s", rr.Code, http.StatusServiceUnavailable, rr.Body.String())
 	}
 
 	body := rr.Body.String()
-	if !strings.Contains(body, "unsupported_endpoint") {
-		t.Fatalf("expected unsupported_endpoint error, got: %s", body)
+	if !strings.Contains(body, "service_unavailable_error") {
+		t.Fatalf("expected service_unavailable_error error, got: %s", body)
 	}
-	if !strings.Contains(body, "/v1/embeddings") {
-		t.Fatalf("expected endpoint hint in body, got: %s", body)
+	if !strings.Contains(body, "Embedder not configured") {
+		t.Fatalf("expected Embedder not configured hint in body, got: %s", body)
 	}
 }

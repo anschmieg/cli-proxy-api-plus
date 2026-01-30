@@ -33,9 +33,9 @@ func (tw *TokenizerWrapper) Count(text string) (int, error) {
 	return count, nil
 }
 
-// getTokenizer returns a cached tokenizer for the given model.
+// GetTokenizer returns a cached tokenizer for the given model.
 // This improves performance by avoiding repeated tokenizer creation.
-func getTokenizer(model string) (*TokenizerWrapper, error) {
+func GetTokenizer(model string) (*TokenizerWrapper, error) {
 	// Check cache first
 	if cached, ok := tokenizerCache.Load(model); ok {
 		return cached.(*TokenizerWrapper), nil

@@ -34,7 +34,9 @@ func main() {
 
 	http.HandleFunc("/v1internal:generateContent", handleCloudCode)
 	http.HandleFunc("/v1internal:streamGenerateContent", handleCloudCodeStream)
+	http.HandleFunc("/v1beta/models/", handleGemini)
 	http.HandleFunc("/v1/chat/completions", handlePortkey)
+	http.HandleFunc("/v1/messages", handleClaude)
 	http.HandleFunc("/logs", handleLogs)
 	http.HandleFunc("/reset", handleReset)
 
@@ -108,6 +110,33 @@ func handlePortkey(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response := `{"id": "chatcmpl-mock", "choices": [{"message": {"role": "assistant", "content": "Mock Portkey Response"}}]}`
+	w.Header().Set("Content-Type", "application/json")
+	w.Write([]byte(response))
+}
+
+func handleClaude(w http.ResponseWriter, r *http.Request) {
+	logRequest(r)
+	if *rateLimitMode {
+		w.WriteHeader(http.StatusTooManyRequests)
+		w.Write([]byte(`{"error": {"type": "error", "error": {"type": "rate_limit_error", "message": "Rate limit exceeded"}}}`))
+		return
+	}
+
+	response := `{"id": "msg_mock", "type": "message", "role": "assistant", "content": [{"type": "text", "text": "Mock Claude Response"}]}`
+	w.Header().Set("Content-Type", "application/json")
+	w.Write([]byte(response))
+}
+
+func handleGemini(w http.ResponseWriter, r *http.Request) {
+	logRequest(r)
+	if *rateLimitMode {
+		w.WriteHeader(http.StatusTooManyRequests)
+		w.Write([]byte(`{"error": {"code": 429, "message": "Rate limit exceeded"}}`))
+		return
+	}
+
+	// Simple mock response for Gemini API
+	response := `{"candidates": [{"content": {"parts": [{"text": "Mock Gemini Response"}]}}]}`
 	w.Header().Set("Content-Type", "application/json")
 	w.Write([]byte(response))
 }

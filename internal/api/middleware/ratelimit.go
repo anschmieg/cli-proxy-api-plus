@@ -24,6 +24,12 @@ func (m *RateLimitMiddleware) Handler() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ip := c.ClientIP()
 		
+		// If manual approval is present, skip rate limit check
+		if approved, ok := c.Get("manual_approval"); ok && approved.(bool) {
+			c.Next()
+			return
+		}
+
 		// Get or create limiter for IP
 		limiterI, _ := m.ips.LoadOrStore(ip, ratelimit.NewTokenBucket(m.rate, m.burst))
 		limiter := limiterI.(*ratelimit.TokenBucket)

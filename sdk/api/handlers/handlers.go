@@ -17,6 +17,7 @@ import (
 	"github.com/router-for-me/CLIProxyAPI/v6/internal/interfaces"
 	"github.com/router-for-me/CLIProxyAPI/v6/internal/knowledge"
 	"github.com/router-for-me/CLIProxyAPI/v6/internal/logging"
+	"github.com/router-for-me/CLIProxyAPI/v6/internal/mcp"
 	"github.com/router-for-me/CLIProxyAPI/v6/internal/thinking"
 	"github.com/router-for-me/CLIProxyAPI/v6/internal/util"
 	coreauth "github.com/router-for-me/CLIProxyAPI/v6/sdk/cliproxy/auth"
@@ -185,6 +186,9 @@ type BaseAPIHandler struct {
 
 	// KnowledgeManager handles knowledge base search when configured.
 	KnowledgeManager *knowledge.Manager
+
+	// MCPService handles MCP tool discovery and execution when configured.
+	MCPService *mcp.Service
 }
 
 // NewBaseAPIHandlers creates a new API handlers instance.
@@ -200,6 +204,7 @@ func NewBaseAPIHandlers(cfg *config.SDKConfig, authManager *coreauth.Manager) *B
 	h := &BaseAPIHandler{
 		Cfg:         cfg,
 		AuthManager: authManager,
+		MCPService:  mcp.NewService(nil),
 	}
 	return h
 }
@@ -214,6 +219,7 @@ func NewBaseAPIHandlersWithConfig(cfg *config.Config, authManager *coreauth.Mana
 		Cfg:         &cfg.SDKConfig,
 		FullCfg:     cfg,
 		AuthManager: authManager,
+		MCPService:  mcp.NewService(cfg),
 	}
 }
 
@@ -230,10 +236,18 @@ func (h *BaseAPIHandler) UpdateConfig(cfg *config.Config) {
 	if cfg == nil {
 		h.Cfg = nil
 		h.FullCfg = nil
+		if h.MCPService != nil {
+			h.MCPService.UpdateConfig(nil)
+		}
 		return
 	}
 	h.Cfg = &cfg.SDKConfig
 	h.FullCfg = cfg
+	if h.MCPService == nil {
+		h.MCPService = mcp.NewService(cfg)
+	} else {
+		h.MCPService.UpdateConfig(cfg)
+	}
 }
 
 // UpdateKnowledgeManager refreshes the knowledge manager used for profile RAG.

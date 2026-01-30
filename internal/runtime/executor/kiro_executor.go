@@ -911,14 +911,14 @@ func (e *KiroExecutor) executeWithRetry(ctx context.Context, auth *cliproxyauth.
 
 			// Fallback for usage if missing from upstream
 			if usageInfo.TotalTokens == 0 {
-				if enc, encErr := getTokenizer(req.Model); encErr == nil {
+				if enc, encErr := GetTokenizer(req.Model); encErr == nil {
 					if inp, countErr := countOpenAIChatTokens(enc, opts.OriginalRequest); countErr == nil {
 						usageInfo.InputTokens = inp
 					}
 				}
 				if len(content) > 0 {
 					// Use tiktoken for more accurate output token calculation
-					if enc, encErr := getTokenizer(req.Model); encErr == nil {
+					if enc, encErr := GetTokenizer(req.Model); encErr == nil {
 						if tokenCount, countErr := enc.Count(content); countErr == nil {
 							usageInfo.OutputTokens = int64(tokenCount)
 						}
@@ -2375,7 +2375,7 @@ func (e *KiroExecutor) streamToChannel(ctx context.Context, body io.Reader, out 
 
 	// Pre-calculate input tokens from request if possible
 	// Kiro uses Claude format, so try Claude format first, then OpenAI format, then fallback
-	if enc, err := getTokenizer(model); err == nil {
+	if enc, err := GetTokenizer(model); err == nil {
 		var inputTokens int64
 		var countMethod string
 
@@ -2754,7 +2754,7 @@ func (e *KiroExecutor) streamToChannel(ctx context.Context, body io.Reader, out 
 				if shouldSendUsageUpdate {
 					// Calculate current output tokens using tiktoken
 					var currentOutputTokens int64
-					if enc, encErr := getTokenizer(model); encErr == nil {
+					if enc, encErr := GetTokenizer(model); encErr == nil {
 						if tokenCount, countErr := enc.Count(accumulatedContent.String()); countErr == nil {
 							currentOutputTokens = int64(tokenCount)
 						}
@@ -3358,7 +3358,7 @@ func (e *KiroExecutor) streamToChannel(ctx context.Context, body io.Reader, out 
 	// Only use local estimation if server didn't provide usage (server-side usage takes priority)
 	if totalUsage.OutputTokens == 0 && accumulatedContent.Len() > 0 {
 		// Try to use tiktoken for accurate counting
-		if enc, err := getTokenizer(model); err == nil {
+		if enc, err := GetTokenizer(model); err == nil {
 			if tokenCount, countErr := enc.Count(accumulatedContent.String()); countErr == nil {
 				totalUsage.OutputTokens = int64(tokenCount)
 				log.Debugf("kiro: streamToChannel calculated output tokens using tiktoken: %d", totalUsage.OutputTokens)
@@ -3458,7 +3458,7 @@ func (e *KiroExecutor) streamToChannel(ctx context.Context, body io.Reader, out 
 // This provides approximate token counts for client requests.
 func (e *KiroExecutor) CountTokens(ctx context.Context, auth *cliproxyauth.Auth, req cliproxyexecutor.Request, opts cliproxyexecutor.Options) (cliproxyexecutor.Response, error) {
 	// Use tiktoken for local token counting
-	enc, err := getTokenizer(req.Model)
+	enc, err := GetTokenizer(req.Model)
 	if err != nil {
 		log.Warnf("kiro: CountTokens failed to get tokenizer: %v, falling back to estimate", err)
 		// Fallback: estimate from payload size (roughly 4 chars per token)

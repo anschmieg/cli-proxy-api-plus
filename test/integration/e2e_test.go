@@ -27,7 +27,8 @@ const (
 func TestEndToEnd(t *testing.T) {
 	// 1. Build and start Mock Upstream
 	mockBin := filepath.Join(os.TempDir(), "mock_upstream")
-	buildCmd := exec.Command("go", "build", "-o", mockBin, "mock_upstream.go")
+	// Build mock_upstream from the mock package
+	buildCmd := exec.Command("go", "build", "-o", mockBin, "mock/main.go")
 	if out, err := buildCmd.CombinedOutput(); err != nil {
 		t.Fatalf("Failed to build mock upstream: %v\n%s", err, out)
 	}
@@ -54,6 +55,14 @@ func TestEndToEnd(t *testing.T) {
 		Port: proxyPort,
 		AuthDir: authDir,
 		Debug: true,
+		SDKConfig: config.SDKConfig{
+			APIKeys: []string{
+				"dummy-gemini-key",
+				"dummy-aistudio-key",
+				"dummy-claude-key",
+				"dummy-openrouter-key",
+			},
+		},
 		GeminiKey: []config.GeminiKey{
 			{
 				APIKey:  "dummy-gemini-key",
@@ -63,7 +72,25 @@ func TestEndToEnd(t *testing.T) {
 		AIStudioKey: []config.AIStudioKey{
 			{
 				APIKey:  "dummy-aistudio-key",
+				BaseURL: mockBaseURL + "/v1",
+				Models: []config.AIStudioModel{
+					{Name: "gemini-2.5-pro", Alias: "ai-studio-pro"},
+				},
+			},
+		},
+		ClaudeKey: []config.ClaudeKey{
+			{
+				APIKey:  "dummy-claude-key",
 				BaseURL: mockBaseURL,
+			},
+		},
+		OpenAICompatibility: []config.OpenAICompatibility{
+			{
+				Name:    "openrouter",
+				BaseURL: mockBaseURL + "/v1",
+				APIKeyEntries: []config.OpenAICompatibilityAPIKey{
+					{APIKey: "dummy-openrouter-key"},
+				},
 			},
 		},
 		Routing: config.RoutingConfig{Strategy: "round-robin"},
@@ -94,10 +121,25 @@ func TestEndToEnd(t *testing.T) {
 	}()
 
 	// Wait for proxy to be ready
-	time.Sleep(2 * time.Second)
+	time.Sleep(5 * time.Second)
 
 	// 4. Run Tests
 	client := &http.Client{Timeout: 5 * time.Second}
+
+	// List Models Check
+	{
+		listReq, _ := http.NewRequest("GET", fmt.Sprintf("http://localhost:%d/v1/models", proxyPort), nil)
+		listReq.Header.Set("Authorization", "Bearer dummy-gemini-key")
+		listResp, err := client.Do(listReq)
+		if err != nil {
+			t.Logf("List models request failed: %v", err)
+		} else {
+			defer listResp.Body.Close()
+			b, _ := io.ReadAll(listResp.Body)
+			t.Logf("Registered models: %s", string(b))
+		}
+	}
+
 	proxyURL := fmt.Sprintf("http://localhost:%d/v1/chat/completions", proxyPort)
 
 	tests := []struct {
@@ -109,40 +151,26 @@ func TestEndToEnd(t *testing.T) {
 		{
 			name:           "CloudCode - Gemini",
 			model:          "gemini-2.5-flash",
-			authHeader:     "Bearer dummy-gemini-key", // The proxy might use configured key or auth header
-			expectUpstream: "/v1internal:generateContent",
+			authHeader:     "Bearer dummy-gemini-key",
+			expectUpstream: "/v1beta/models/gemini-2.5-flash:generateContent",
 		},
 		{
-			name:           "CloudCode - Antigravity (Claude)",
+			name:           "Claude API",
 			model:          "claude-sonnet-4-5",
-			authHeader:     "Bearer dummy-gemini-key",
-			expectUpstream: "/v1internal:generateContent",
+			authHeader:     "Bearer dummy-claude-key",
+			expectUpstream: "/v1/messages",
+		},
+		{
+			name:           "OpenRouter - Claude Haiku",
+			model:          "openrouter/anthropic/claude-3-haiku",
+			authHeader:     "Bearer dummy-openrouter-key",
+			expectUpstream: "/v1/chat/completions",
 		},
 		{
 			name:           "AI Studio",
-			model:          "gemini-2.5-pro", 
-			// Note: gemini-2.5-pro is in GeminiCLIModels (registry), so it might route to Gemini Key.
-			// But we want to test AI Studio Key routing.
-			// AIStudio models overlap. Let's use a model only in AIStudio or rely on explicit provider routing?
-			// The current logic prioritizes GeminiKey if model matches.
-			// Let's use a specific AIStudio model or check round-robin if both exist.
-			// Actually, let's use a custom model alias if possible, or just rely on the fact that we configured AIStudioKey.
-			// Wait, the `service.go` logic registers providers.
-			// If we ask for "gemini-2.5-flash", it could be GeminiCLI or AIStudio.
-			// Let's assume the router picks one.
-			// To strictly test AI Studio Portkey, we might need a model that maps only there or use `ai-studio` provider explicitly?
-			// The gateway logic in TS routed based on model name.
-			// In Go, it looks up `GetProviderName` -> `registry`.
-			// `gemini-2.5-pro` is in `GetGeminiCLIModels` AND `GetAIStudioModels`.
-			// So it has multiple providers. `Manager` will pick one.
-			// Since we configured both, it might round-robin.
-			// Let's try to force it or check if it hits *either* mock endpoint correctly.
-			// Mock Upstream handles both on different paths.
-			// `v1internal` for CloudCode, `v1/chat/completions` for Portkey.
-			
-			// Let's use a model that should definitely be CloudCode (Claude) vs one that could be AIStudio.
-			authHeader: "Bearer dummy-aistudio-key",
-			expectUpstream: "any", // We'll check logs
+			model:          "ai-studio-pro",
+			authHeader:     "Bearer dummy-aistudio-key",
+			expectUpstream: "/v1/chat/completions",
 		},
 	}
 

@@ -22,6 +22,7 @@ import (
 //   - "codex" for OpenAI GPT-compatible providers
 //   - "claude" for Anthropic models
 //   - "qwen" for Alibaba's Qwen models
+//   - "openrouter" for OpenRouter models
 //   - "openai-compatibility" for external OpenAI-compatible providers
 //
 // Parameters:

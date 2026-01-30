@@ -30,6 +30,17 @@ func GetClaudeModels() []*ModelInfo {
 			Thinking:            &ThinkingSupport{Min: 1024, Max: 128000, ZeroAllowed: true, DynamicAllowed: false},
 		},
 		{
+			ID:                  "claude-sonnet-4-5",
+			Object:              "model",
+			Created:             1759104000, // 2025-09-29
+			OwnedBy:             "anthropic",
+			Type:                "claude",
+			DisplayName:         "Claude 4.5 Sonnet",
+			ContextLength:       200000,
+			MaxCompletionTokens: 64000,
+			Thinking:            &ThinkingSupport{Min: 1024, Max: 128000, ZeroAllowed: true, DynamicAllowed: false},
+		},
+		{
 			ID:                  "claude-opus-4-5-20251101",
 			Object:              "model",
 			Created:             1761955200, // 2025-11-01
@@ -869,6 +880,7 @@ func LookupStaticModelInfo(modelID string) *ModelInfo {
 		GetOpenAIModels(),
 		GetQwenModels(),
 		GetIFlowModels(),
+		GetOpenRouterModels(),
 	}
 	for _, models := range allModels {
 		for _, m := range models {
@@ -890,6 +902,124 @@ func LookupStaticModelInfo(modelID string) *ModelInfo {
 	return nil
 }
 
+// GetOpenRouterModels returns the available models for OpenRouter.
+// These models are available through the OpenRouter API.
+func GetOpenRouterModels() []*ModelInfo {
+	return []*ModelInfo{
+		{
+			ID:                  "openrouter/google/gemini-pro-1.5",
+			Object:              "model",
+			Created:             1732752000, // Placeholder
+			OwnedBy:             "openrouter",
+			Type:                "openrouter",
+			DisplayName:         "Gemini Pro 1.5",
+			Description:         "Google Gemini Pro 1.5 via OpenRouter",
+			ContextLength:       1048576,
+			MaxCompletionTokens: 8192,
+		},
+		{
+			ID:                  "openrouter/anthropic/claude-3-opus",
+			Object:              "model",
+			Created:             1732752000, // Placeholder
+			OwnedBy:             "openrouter",
+			Type:                "openrouter",
+			DisplayName:         "Claude 3 Opus",
+			Description:         "Anthropic Claude 3 Opus via OpenRouter",
+			ContextLength:       200000,
+			MaxCompletionTokens: 4096,
+		},
+		{
+			ID:                  "openrouter/anthropic/claude-3-sonnet",
+			Object:              "model",
+			Created:             1732752000, // Placeholder
+			OwnedBy:             "openrouter",
+			Type:                "openrouter",
+			DisplayName:         "Claude 3 Sonnet",
+			Description:         "Anthropic Claude 3 Sonnet via OpenRouter",
+			ContextLength:       200000,
+			MaxCompletionTokens: 4096,
+		},
+		{
+			ID:                  "openrouter/anthropic/claude-3-haiku",
+			Object:              "model",
+			Created:             1732752000, // Placeholder
+			OwnedBy:             "openrouter",
+			Type:                "openrouter",
+			DisplayName:         "Claude 3 Haiku",
+			Description:         "Anthropic Claude 3 Haiku via OpenRouter",
+			ContextLength:       200000,
+			MaxCompletionTokens: 4096,
+		},
+		{
+			ID:                  "openrouter/openai/gpt-4-turbo",
+			Object:              "model",
+			Created:             1732752000, // Placeholder
+			OwnedBy:             "openrouter",
+			Type:                "openrouter",
+			DisplayName:         "GPT-4 Turbo",
+			Description:         "OpenAI GPT-4 Turbo via OpenRouter",
+			ContextLength:       128000,
+			MaxCompletionTokens: 4096,
+		},
+		{
+			ID:                  "openrouter/openai/gpt-3.5-turbo",
+			Object:              "model",
+			Created:             1732752000, // Placeholder
+			OwnedBy:             "openrouter",
+			Type:                "openrouter",
+			DisplayName:         "GPT-3.5 Turbo",
+			Description:         "OpenAI GPT-3.5 Turbo via OpenRouter",
+			ContextLength:       16385,
+			MaxCompletionTokens: 4096,
+		},
+		{
+			ID:                  "openrouter/google/gemini-2.0-flash-exp:free",
+			Object:              "model",
+			Created:             1732752000, // Placeholder
+			OwnedBy:             "openrouter",
+			Type:                "openrouter",
+			DisplayName:         "Gemini 2.0 Flash Exp (Free)",
+			Description:         "Google Gemini 2.0 Flash Experimental via OpenRouter (Free)",
+			ContextLength:       1048576,
+			MaxCompletionTokens: 8192,
+		},
+		{
+			ID:                  "openrouter/anthropic/claude-3.5-sonnet",
+			Object:              "model",
+			Created:             1732752000, // Placeholder
+			OwnedBy:             "openrouter",
+			Type:                "openrouter",
+			DisplayName:         "Claude 3.5 Sonnet",
+			Description:         "Anthropic Claude 3.5 Sonnet via OpenRouter",
+			ContextLength:       200000,
+			MaxCompletionTokens: 8192,
+		},
+		{
+			ID:                  "openrouter/anthropic/claude-3.7-sonnet",
+			Object:              "model",
+			Created:             1732752000, // Placeholder
+			OwnedBy:             "openrouter",
+			Type:                "openrouter",
+			DisplayName:         "Claude 3.7 Sonnet",
+			Description:         "Anthropic Claude 3.7 Sonnet via OpenRouter",
+			ContextLength:       200000,
+			MaxCompletionTokens: 8192,
+			Thinking:            &ThinkingSupport{Min: 1024, Max: 128000, ZeroAllowed: false, DynamicAllowed: false},
+		},
+		{
+			ID:                  "openrouter/anthropic/claude-sonnet-4.5",
+			Object:              "model",
+			Created:             1732752000, // Placeholder
+			OwnedBy:             "openrouter",
+			Type:                "openrouter",
+			DisplayName:         "Claude 4.5 Sonnet",
+			Description:         "Anthropic Claude 4.5 Sonnet via OpenRouter",
+			ContextLength:       200000,
+			MaxCompletionTokens: 64000,
+			Thinking:            &ThinkingSupport{Min: 1024, Max: 128000, ZeroAllowed: true, DynamicAllowed: false},
+		},
+	}
+}
 // GetGitHubCopilotModels returns the available models for GitHub Copilot.
 // These models are available through the GitHub Copilot API at api.githubcopilot.com.
 func GetGitHubCopilotModels() []*ModelInfo {

@@ -58,6 +58,13 @@ func NewOpenAIEmbedder(opts OpenAIEmbedderOptions) *OpenAIEmbedder {
 	}
 }
 
+func (e *OpenAIEmbedder) GetModel() string {
+	if e == nil {
+		return ""
+	}
+	return e.model
+}
+
 func (e *OpenAIEmbedder) Embed(ctx context.Context, texts []string) ([][]float32, error) {
 	if e == nil {
 		return nil, fmt.Errorf("embedder not configured")

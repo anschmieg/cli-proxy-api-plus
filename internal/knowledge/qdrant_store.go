@@ -305,6 +305,221 @@ func (s *QdrantStore) ensureCollectionOnce(ctx context.Context) error {
 	return nil
 }
 
+func (s *QdrantStore) ListProjects(ctx context.Context, limit int) ([]string, error) {
+	if s == nil {
+		return nil, fmt.Errorf("qdrant store not configured")
+	}
+	if err := s.ensureCollection(ctx); err != nil {
+		return nil, err
+	}
+
+	if limit <= 0 {
+		limit = 100
+	}
+
+	reqPayload := struct {
+		Limit       int  `json:"limit"`
+		WithPayload bool `json:"with_payload"`
+		WithVector  bool `json:"with_vector"`
+	}{
+		Limit:       1000, // Reasonable limit to find unique projects
+		WithPayload: true,
+		WithVector:  false,
+	}
+
+	body, err := json.Marshal(reqPayload)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.scrollURL(), bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	var decoded struct {
+		Result struct {
+			Points []struct {
+				Payload map[string]interface{} `json:"payload"`
+			} `json:"points"`
+		} `json:"result"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&decoded); err != nil {
+		return nil, err
+	}
+
+	projects := make(map[string]struct{})
+	for _, p := range decoded.Result.Points {
+		if project, ok := p.Payload["project"].(string); ok && project != "" {
+			projects[project] = struct{}{}
+		}
+	}
+
+	out := make([]string, 0, len(projects))
+	for p := range projects {
+		out = append(out, p)
+	}
+	if limit > 0 && len(out) > limit {
+		out = out[:limit]
+	}
+	return out, nil
+}
+
+func (s *QdrantStore) ListFiles(ctx context.Context, project string, limit int) ([]FileDescriptor, error) {
+	if s == nil {
+		return nil, fmt.Errorf("qdrant store not configured")
+	}
+	if err := s.ensureCollection(ctx); err != nil {
+		return nil, err
+	}
+
+	if limit <= 0 {
+		limit = 100
+	}
+
+	type matchValue struct {
+		Value string `json:"value"`
+	}
+	type condition struct {
+		Key   string     `json:"key"`
+		Match matchValue `json:"match"`
+	}
+	type scrollFilter struct {
+		Must []condition `json:"must,omitempty"`
+	}
+
+	reqPayload := struct {
+		Limit       int           `json:"limit"`
+		WithPayload bool          `json:"with_payload"`
+		WithVector  bool          `json:"with_vector"`
+		Filter      *scrollFilter `json:"filter,omitempty"`
+	}{
+		Limit:       1000,
+		WithPayload: true,
+		WithVector:  false,
+		Filter: &scrollFilter{
+			Must: []condition{
+				{Key: "project", Match: matchValue{Value: project}},
+			},
+		},
+	}
+
+	body, err := json.Marshal(reqPayload)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.scrollURL(), bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	var decoded struct {
+		Result struct {
+			Points []struct {
+				Payload map[string]interface{} `json:"payload"`
+			} `json:"points"`
+		} `json:"result"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&decoded); err != nil {
+		return nil, err
+	}
+
+	files := make(map[string]FileDescriptor)
+	for _, p := range decoded.Result.Points {
+		fileID, _ := p.Payload["fileId"].(string)
+		filename, _ := p.Payload["filename"].(string)
+		if fileID != "" {
+			files[fileID] = FileDescriptor{
+				FileID:   fileID,
+				Filename: filename,
+			}
+		}
+	}
+
+	out := make([]FileDescriptor, 0, len(files))
+	for _, desc := range files {
+		out = append(out, desc)
+	}
+	if limit > 0 && len(out) > limit {
+		out = out[:limit]
+	}
+	return out, nil
+}
+
+func (s *QdrantStore) DeleteByFilter(ctx context.Context, filter map[string]string) error {
+	if s == nil {
+		return fmt.Errorf("qdrant store not configured")
+	}
+	if err := s.ensureCollection(ctx); err != nil {
+		return err
+	}
+
+	type matchValue struct {
+		Value string `json:"value"`
+	}
+	type condition struct {
+		Key   string     `json:"key"`
+		Match matchValue `json:"match"`
+	}
+	type deleteFilter struct {
+		Must []condition `json:"must,omitempty"`
+	}
+
+	reqPayload := struct {
+		Filter deleteFilter `json:"filter"`
+	}{
+		Filter: deleteFilter{Must: make([]condition, 0, len(filter))},
+	}
+
+	for k, v := range filter {
+		reqPayload.Filter.Must = append(reqPayload.Filter.Must, condition{
+			Key:   k,
+			Match: matchValue{Value: v},
+		})
+	}
+
+	body, err := json.Marshal(reqPayload)
+	if err != nil {
+		return err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.deleteURL(), bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode/100 != 2 {
+		return fmt.Errorf("qdrant delete by filter failed: %s", resp.Status)
+	}
+	return nil
+}
+
+func (s *QdrantStore) scrollURL() string {
+	return fmt.Sprintf("%s/collections/%s/points/scroll", s.baseURL, s.collection)
+}
+
 func (s *QdrantStore) collectionURL() string {
 	return fmt.Sprintf("%s/collections/%s", s.baseURL, s.collection)
 }

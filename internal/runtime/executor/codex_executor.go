@@ -21,7 +21,6 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
-	"github.com/tiktoken-go/tokenizer"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -332,7 +331,7 @@ func (e *CodexExecutor) CountTokens(ctx context.Context, auth *cliproxyauth.Auth
 		body, _ = sjson.SetBytes(body, "instructions", "")
 	}
 
-	enc, err := tokenizerForCodexModel(baseModel)
+	enc, err := GetTokenizer(baseModel)
 	if err != nil {
 		return cliproxyexecutor.Response{}, fmt.Errorf("codex executor: tokenizer init failed: %w", err)
 	}
@@ -347,27 +346,29 @@ func (e *CodexExecutor) CountTokens(ctx context.Context, auth *cliproxyauth.Auth
 	return cliproxyexecutor.Response{Payload: []byte(translated)}, nil
 }
 
-func tokenizerForCodexModel(model string) (tokenizer.Codec, error) {
-	sanitized := strings.ToLower(strings.TrimSpace(model))
-	switch {
-	case sanitized == "":
-		return tokenizer.Get(tokenizer.Cl100kBase)
-	case strings.HasPrefix(sanitized, "gpt-5"):
-		return tokenizer.ForModel(tokenizer.GPT5)
-	case strings.HasPrefix(sanitized, "gpt-4.1"):
-		return tokenizer.ForModel(tokenizer.GPT41)
-	case strings.HasPrefix(sanitized, "gpt-4o"):
-		return tokenizer.ForModel(tokenizer.GPT4o)
-	case strings.HasPrefix(sanitized, "gpt-4"):
-		return tokenizer.ForModel(tokenizer.GPT4)
-	case strings.HasPrefix(sanitized, "gpt-3.5"), strings.HasPrefix(sanitized, "gpt-3"):
-		return tokenizer.ForModel(tokenizer.GPT35Turbo)
-	default:
-		return tokenizer.Get(tokenizer.Cl100kBase)
-	}
-}
+// tokenizerForCodexModel is no longer needed since GetTokenizer is public.
+// func tokenizerForCodexModel(model string) (tokenizer.Codec, error) {
+// 	sanitized := strings.ToLower(strings.TrimSpace(model))
+// 	switch {
+// 	case sanitized == "":
+// 		return tokenizer.Get(tokenizer.Cl100kBase)
+// 	case strings.HasPrefix(sanitized, "gpt-5"):
+// 		return tokenizer.ForModel(tokenizer.GPT5)
+// 	case strings.HasPrefix(sanitized, "gpt-4.1"):
+// 		return tokenizer.ForModel(tokenizer.GPT41)
+// 	case strings.HasPrefix(sanitized, "gpt-4o"):
+// 		return tokenizer.ForModel(tokenizer.GPT4o)
+// 	case strings.HasPrefix(sanitized, "gpt-4"):
+// 		return tokenizer.ForModel(tokenizer.GPT4)
+// 	case strings.HasPrefix(sanitized, "gpt-3.5"), strings.HasPrefix(sanitized, "gpt-3"):
+// 		return tokenizer.ForModel(tokenizer.GPT35Turbo)
+// 	default:
+// 		return tokenizer.Get(tokenizer.Cl100kBase)
+// 	}
+// }
 
-func countCodexInputTokens(enc tokenizer.Codec, body []byte) (int64, error) {
+
+func countCodexInputTokens(enc *TokenizerWrapper, body []byte) (int64, error) {
 	if enc == nil {
 		return 0, fmt.Errorf("encoder is nil")
 	}

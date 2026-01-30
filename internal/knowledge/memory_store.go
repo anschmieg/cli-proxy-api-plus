@@ -34,6 +34,76 @@ func (s *MemoryStore) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
+func (s *MemoryStore) ListProjects(ctx context.Context, limit int) ([]string, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	projects := make(map[string]struct{})
+	for _, doc := range s.docs {
+		if project, ok := doc.Metadata["project"].(string); ok && project != "" {
+			projects[project] = struct{}{}
+		}
+	}
+
+	out := make([]string, 0, len(projects))
+	for project := range projects {
+		out = append(out, project)
+	}
+	sort.Strings(out)
+
+	if limit > 0 && len(out) > limit {
+		out = out[:limit]
+	}
+	return out, nil
+}
+
+func (s *MemoryStore) ListFiles(ctx context.Context, project string, limit int) ([]FileDescriptor, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	files := make(map[string]FileDescriptor)
+	for _, doc := range s.docs {
+		p, ok := doc.Metadata["project"].(string)
+		if !ok || p != project {
+			continue
+		}
+
+		fileID, _ := doc.Metadata["fileId"].(string)
+		filename, _ := doc.Metadata["filename"].(string)
+		if fileID != "" {
+			files[fileID] = FileDescriptor{
+				FileID:   fileID,
+				Filename: filename,
+			}
+		}
+	}
+
+	out := make([]FileDescriptor, 0, len(files))
+	for _, desc := range files {
+		out = append(out, desc)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		return out[i].FileID < out[j].FileID
+	})
+
+	if limit > 0 && len(out) > limit {
+		out = out[:limit]
+	}
+	return out, nil
+}
+
+func (s *MemoryStore) DeleteByFilter(ctx context.Context, filter map[string]string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for id, doc := range s.docs {
+		if matchesFilter(doc.Metadata, filter) {
+			delete(s.docs, id)
+		}
+	}
+	return nil
+}
+
 func (s *MemoryStore) Search(ctx context.Context, vector []float32, limit int, filter map[string]string) ([]Document, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

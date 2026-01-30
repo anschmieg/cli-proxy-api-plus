@@ -382,6 +382,7 @@ func (s *Service) ensureExecutorsForAuth(a *coreauth.Auth) {
 		return
 	case "ai-studio":
 		s.coreManager.RegisterExecutor(executor.NewAIStudioPortkeyExecutor(s.cfg))
+		return
 	case "antigravity":
 		s.coreManager.RegisterExecutor(executor.NewAntigravityExecutor(s.cfg))
 	case "cloudcode":
@@ -396,6 +397,8 @@ func (s *Service) ensureExecutorsForAuth(a *coreauth.Auth) {
 		s.coreManager.RegisterExecutor(executor.NewIFlowExecutor(s.cfg))
 	case "kiro":
 		s.coreManager.RegisterExecutor(executor.NewKiroExecutor(s.cfg))
+	case "openrouter":
+		s.coreManager.RegisterExecutor(executor.NewOpenRouterExecutor(s.cfg))
 	case "github-copilot":
 		s.coreManager.RegisterExecutor(executor.NewGitHubCopilotExecutor(s.cfg))
 	default:
@@ -733,7 +736,7 @@ func (s *Service) registerModelsForAuth(a *coreauth.Auth) {
 	}
 	provider := strings.ToLower(strings.TrimSpace(a.Provider))
 	compatProviderKey, compatDisplayName, compatDetected := openAICompatInfoFromAuth(a)
-	if compatDetected {
+	if compatDetected && provider != "openrouter" {
 		provider = "openai-compatibility"
 	}
 	excluded := s.oauthExcludedModels(provider, authKind)
@@ -823,6 +826,9 @@ func (s *Service) registerModelsForAuth(a *coreauth.Auth) {
 		models = applyExcludedModels(models, excluded)
 	case "kiro":
 		models = s.fetchKiroModels(a)
+		models = applyExcludedModels(models, excluded)
+	case "openrouter":
+		models = registry.GetOpenRouterModels()
 		models = applyExcludedModels(models, excluded)
 	default:
 		// Handle OpenAI-compatibility providers by name using config
@@ -1290,7 +1296,7 @@ func buildAIStudioConfigModels(entry *config.AIStudioKey) []*ModelInfo {
 	if entry == nil {
 		return nil
 	}
-	return buildConfigModels(entry.Models, "google", "gemini")
+	return buildConfigModels(entry.Models, "google", "ai-studio")
 }
 
 func buildClaudeConfigModels(entry *config.ClaudeKey) []*ModelInfo {

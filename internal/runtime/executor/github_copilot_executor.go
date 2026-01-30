@@ -332,9 +332,37 @@ func (e *GitHubCopilotExecutor) ExecuteStream(ctx context.Context, auth *cliprox
 	return stream, nil
 }
 
-// CountTokens is not supported for GitHub Copilot.
-func (e *GitHubCopilotExecutor) CountTokens(_ context.Context, _ *cliproxyauth.Auth, _ cliproxyexecutor.Request, _ cliproxyexecutor.Options) (cliproxyexecutor.Response, error) {
-	return cliproxyexecutor.Response{}, statusErr{code: http.StatusNotImplemented, msg: "count tokens not supported for github-copilot"}
+// CountTokens approximates prompt tokens for GitHub Copilot requests.
+func (e *GitHubCopilotExecutor) CountTokens(ctx context.Context, auth *cliproxyauth.Auth, req cliproxyexecutor.Request, opts cliproxyexecutor.Options) (cliproxyexecutor.Response, error) {
+	_, errToken := e.ensureAPIToken(ctx, auth)
+	if errToken != nil {
+		return cliproxyexecutor.Response{}, errToken
+	}
+
+	from := opts.SourceFormat
+	useResponses := useGitHubCopilotResponsesEndpoint(from)
+	to := sdktranslator.FromString("openai") // Assume OpenAI token counting logic for Copilot
+	if useResponses {
+		to = sdktranslator.FromString("openai-response")
+	}
+
+	body := sdktranslator.TranslateRequest(from, to, req.Model, bytes.Clone(req.Payload), false)
+	body = e.normalizeModel(req.Model, body)
+
+	// Use OpenAI chat token counting, as Copilot mostly aligns with it
+	enc, err := GetTokenizer(req.Model)
+	if err != nil {
+		return cliproxyexecutor.Response{}, fmt.Errorf("github-copilot executor: tokenizer init failed: %w", err)
+	}
+
+	count, err := countOpenAIChatTokens(enc, body)
+	if err != nil {
+		return cliproxyexecutor.Response{}, fmt.Errorf("github-copilot executor: token counting failed: %w", err)
+	}
+
+	usageJSON := fmt.Sprintf(`{"usage":{"prompt_tokens":%d,"completion_tokens":0,"total_tokens":%d}}`, count, count)
+	translated := sdktranslator.TranslateTokenCount(ctx, to, from, count, []byte(usageJSON))
+	return cliproxyexecutor.Response{Payload: []byte(translated)}, nil
 }
 
 // Refresh validates the GitHub token is still working.
