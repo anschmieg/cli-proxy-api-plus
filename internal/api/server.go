@@ -678,6 +678,14 @@ func (s *Server) registerManagementRoutes() {
 		mgmt.PATCH("/ampcode/upstream-api-keys", s.mgmt.PatchAmpUpstreamAPIKeys)
 		mgmt.DELETE("/ampcode/upstream-api-keys", s.mgmt.DeleteAmpUpstreamAPIKeys)
 
+		// Model pools and clusters
+		mgmt.GET("/model-pools", s.mgmt.GetModelPools)
+		mgmt.PUT("/model-pools", s.mgmt.PutModelPools)
+		mgmt.PATCH("/model-pools/pool", s.mgmt.PatchModelPool)
+		mgmt.DELETE("/model-pools/pool", s.mgmt.DeleteModelPool)
+		mgmt.PATCH("/model-pools/cluster", s.mgmt.PatchModelCluster)
+		mgmt.DELETE("/model-pools/cluster", s.mgmt.DeleteModelCluster)
+
 		mgmt.GET("/request-retry", s.mgmt.GetRequestRetry)
 		mgmt.PUT("/request-retry", s.mgmt.PutRequestRetry)
 		mgmt.PATCH("/request-retry", s.mgmt.PutRequestRetry)

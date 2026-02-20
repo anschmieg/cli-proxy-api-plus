@@ -135,6 +135,11 @@ type Config struct {
 	// Payload defines default and override rules for provider payload parameters.
 	Payload PayloadConfig `yaml:"payload" json:"payload"`
 
+	// ModelPools defines model pooling and clustering configuration.
+	// Level 1 pools aggregate the same model across multiple providers under one ID.
+	// Level 2 clusters group multiple pools under a semantic name (e.g., "coding-high").
+	ModelPools ModelPoolConfig `yaml:"model-pools" json:"model-pools"`
+
 	// IncognitoBrowser enables opening OAuth URLs in incognito/private browsing mode.
 	// This is useful when you want to login with a different account without logging out
 	// from your current session. Default: false.
@@ -362,6 +367,83 @@ type PayloadModelRule struct {
 	Name string `yaml:"name" json:"name"`
 	// Protocol restricts the rule to a specific translator format (e.g., "gemini", "responses").
 	Protocol string `yaml:"protocol" json:"protocol"`
+}
+
+// ModelPoolConfig defines model pooling and clustering.
+type ModelPoolConfig struct {
+	// Enabled toggles the pooling feature. When false, pool/cluster model IDs are not recognized.
+	Enabled bool `yaml:"enabled" json:"enabled"`
+
+	// Pools defines Level 1 pools: same logical model aggregated across providers.
+	// Each pool exposes a virtual model ID that resolves to concrete models from multiple providers.
+	Pools []ModelPool `yaml:"pools,omitempty" json:"pools,omitempty"`
+
+	// Clusters defines Level 2 clusters: named groups of pools for semantic routing.
+	// A cluster ID (e.g., "coding-high") resolves to an ordered list of pool or model IDs.
+	Clusters []ModelCluster `yaml:"clusters,omitempty" json:"clusters,omitempty"`
+
+	// DefaultStrategy is the selection strategy for pools/clusters when not overridden.
+	// Supported values: "round-robin" (default), "priority", "latency" (future).
+	DefaultStrategy string `yaml:"default-strategy,omitempty" json:"default-strategy,omitempty"`
+}
+
+// ModelPool defines a Level 1 pool: a virtual model ID backed by concrete models from one or more providers.
+type ModelPool struct {
+	// ID is the virtual model ID exposed to clients (e.g., "claude-sonnet-4").
+	// If empty, the first member's model name is used.
+	ID string `yaml:"id" json:"id"`
+
+	// Members lists the concrete model+provider pairs that back this pool.
+	Members []PoolMember `yaml:"members" json:"members"`
+
+	// Strategy overrides the default selection strategy for this pool.
+	Strategy string `yaml:"strategy,omitempty" json:"strategy,omitempty"`
+}
+
+// PoolMember is a concrete model+provider pair within a pool.
+type PoolMember struct {
+	// Model is the actual model ID as known to the provider (e.g., "kiro-claude-sonnet-4-5").
+	Model string `yaml:"model" json:"model"`
+
+	// Provider is the provider type (e.g., "kiro", "claude", "codex"). Optional—if empty,
+	// all providers that offer this model are included.
+	Provider string `yaml:"provider,omitempty" json:"provider,omitempty"`
+
+	// Priority is an optional numeric priority (lower = preferred). Only used with "priority" strategy.
+	Priority int `yaml:"priority,omitempty" json:"priority,omitempty"`
+
+	// Weight is an optional weight for weighted round-robin. Default is 1.
+	Weight int `yaml:"weight,omitempty" json:"weight,omitempty"`
+}
+
+// ModelCluster defines a Level 2 cluster: a named group of pools or models.
+type ModelCluster struct {
+	// ID is the cluster name exposed to clients (e.g., "coding-high").
+	ID string `yaml:"id" json:"id"`
+
+	// Description is an optional human-readable description.
+	Description string `yaml:"description,omitempty" json:"description,omitempty"`
+
+	// Members lists pool IDs or model IDs in priority order.
+	// The first available member is selected. Members can reference pool IDs or raw model IDs.
+	Members []ClusterMember `yaml:"members" json:"members"`
+
+	// Strategy overrides the default selection strategy for this cluster.
+	// "priority" (default for clusters): try members in order, use first available.
+	// "round-robin": rotate across available members.
+	Strategy string `yaml:"strategy,omitempty" json:"strategy,omitempty"`
+}
+
+// ClusterMember references a pool or model within a cluster.
+type ClusterMember struct {
+	// Pool references a Level 1 pool ID. Mutually exclusive with Model.
+	Pool string `yaml:"pool,omitempty" json:"pool,omitempty"`
+
+	// Model references a raw model ID directly (bypasses pool lookup). Mutually exclusive with Pool.
+	Model string `yaml:"model,omitempty" json:"model,omitempty"`
+
+	// Priority is an optional numeric priority (lower = preferred). Only used with "priority" strategy.
+	Priority int `yaml:"priority,omitempty" json:"priority,omitempty"`
 }
 
 // CloakConfig configures request cloaking for non-Claude-Code clients.

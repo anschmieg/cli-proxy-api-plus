@@ -42,7 +42,12 @@ func (h *GeminiAPIHandler) HandlerType() string {
 func (h *GeminiAPIHandler) Models() []map[string]any {
 	// Get dynamic models from the global registry
 	modelRegistry := registry.GetGlobalRegistry()
-	return modelRegistry.GetAvailableModels("gemini")
+	models := modelRegistry.GetAvailableModels("gemini")
+	// Append virtual pool/cluster models
+	if vms := h.VirtualModels(); len(vms) > 0 {
+		models = append(models, vms...)
+	}
+	return models
 }
 
 // GeminiModels handles the Gemini models listing endpoint.
