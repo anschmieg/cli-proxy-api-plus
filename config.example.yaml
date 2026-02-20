@@ -386,3 +386,67 @@ oauth-model-alias:
 #           protocol: "codex" # restricts the rule to a specific protocol, options: openai, gemini, claude, codex
 #       params: # JSON path (gjson/sjson syntax) -> raw JSON value (strings are used as-is, must be valid JSON)
 #         "response_format": "{\"type\":\"json_schema\",\"json_schema\":{\"name\":\"answer\",\"schema\":{\"type\":\"object\"}}}"
+
+# Model Pooling & Clustering
+# Two-level system for aggregating models across providers under virtual model IDs.
+#
+# Level 1 — Pools: Route the same logical model from multiple providers under one virtual ID.
+#   Useful when you have the same model available via different subscriptions/providers.
+#   The gateway tries members in priority order and fails over on 429/503 errors.
+#
+# Level 2 — Clusters: Group multiple pools (or raw model IDs) under a semantic name.
+#   Use this to expose intent-based model IDs like "coding-high", "coding-fast", etc.
+#
+# Strategies:
+#   - "round-robin" (default for pools): rotate across members on each request
+#   - "priority" (default for clusters): try members in order, fail over on exhaustion
+#
+# model-pools:
+#   enabled: true
+#   default-strategy: round-robin
+#
+#   # Level 1: Pools — same model, multiple providers
+#   pools:
+#     - id: "claude-sonnet-4"           # Virtual model ID exposed to clients
+#       strategy: "priority"            # Override default strategy for this pool
+#       members:
+#         - model: "kiro-claude-sonnet-4-5"        # Actual model name sent to provider
+#           provider: "kiro"                        # Provider type
+#           priority: 0                             # Lower = preferred (used with "priority" strategy)
+#           weight: 2                               # Higher = more requests (used with "round-robin")
+#         - model: "claude-sonnet-4-20250514"
+#           provider: "claude"
+#           priority: 1
+#
+#     - id: "gpt-4.1"
+#       members:
+#         - model: "gpt-4.1"
+#           provider: "codex"
+#
+#   # Level 2: Clusters — semantic names grouping multiple pools
+#   clusters:
+#     - id: "coding-high"               # Semantic model ID exposed to clients
+#       description: "Best available model for complex coding tasks"
+#       strategy: "priority"
+#       members:
+#         - pool: "claude-sonnet-4"     # Reference a Level 1 pool by ID
+#           priority: 0
+#         - pool: "gpt-4.1"
+#           priority: 1
+#
+#     - id: "coding-fast"
+#       description: "Fast, cost-efficient model for simple coding tasks"
+#       members:
+#         - model: "kiro-claude-haiku-4-5"    # Can reference raw models directly
+#         - model: "gpt-4.1-mini"
+#
+#     - id: "chat"
+#       description: "General-purpose conversational model"
+#       members:
+#         - pool: "claude-sonnet-4"
+#
+#     - id: "reasoning"
+#       description: "Models optimized for complex reasoning and analysis"
+#       members:
+#         - model: "claude-sonnet-4-20250514(64000)"   # Supports thinking suffixes
+#         - model: "gpt-4.1"

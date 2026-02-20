@@ -18,6 +18,7 @@ import (
 	"github.com/router-for-me/CLIProxyAPI/v6/internal/knowledge"
 	"github.com/router-for-me/CLIProxyAPI/v6/internal/logging"
 	"github.com/router-for-me/CLIProxyAPI/v6/internal/mcp"
+	"github.com/router-for-me/CLIProxyAPI/v6/internal/pool"
 	"github.com/router-for-me/CLIProxyAPI/v6/internal/thinking"
 	"github.com/router-for-me/CLIProxyAPI/v6/internal/util"
 	coreauth "github.com/router-for-me/CLIProxyAPI/v6/sdk/cliproxy/auth"
@@ -189,6 +190,9 @@ type BaseAPIHandler struct {
 
 	// MCPService handles MCP tool discovery and execution when configured.
 	MCPService *mcp.Service
+
+	// PoolResolver resolves virtual model IDs (pools/clusters) to concrete model+provider pairs.
+	PoolResolver *pool.Resolver
 }
 
 // NewBaseAPIHandlers creates a new API handlers instance.
@@ -202,9 +206,10 @@ type BaseAPIHandler struct {
 //   - *BaseAPIHandler: A new API handlers instance
 func NewBaseAPIHandlers(cfg *config.SDKConfig, authManager *coreauth.Manager) *BaseAPIHandler {
 	h := &BaseAPIHandler{
-		Cfg:         cfg,
-		AuthManager: authManager,
-		MCPService:  mcp.NewService(nil),
+		Cfg:          cfg,
+		AuthManager:  authManager,
+		MCPService:   mcp.NewService(nil),
+		PoolResolver: pool.NewResolver(nil),
 	}
 	return h
 }
@@ -216,10 +221,11 @@ func NewBaseAPIHandlersWithConfig(cfg *config.Config, authManager *coreauth.Mana
 		return NewBaseAPIHandlers(nil, authManager)
 	}
 	return &BaseAPIHandler{
-		Cfg:         &cfg.SDKConfig,
-		FullCfg:     cfg,
-		AuthManager: authManager,
-		MCPService:  mcp.NewService(cfg),
+		Cfg:          &cfg.SDKConfig,
+		FullCfg:      cfg,
+		AuthManager:  authManager,
+		MCPService:   mcp.NewService(cfg),
+		PoolResolver: pool.NewResolver(&cfg.ModelPools),
 	}
 }
 
@@ -248,11 +254,42 @@ func (h *BaseAPIHandler) UpdateConfig(cfg *config.Config) {
 	} else {
 		h.MCPService.UpdateConfig(cfg)
 	}
+	// Reload pool resolver with updated config
+	if h.PoolResolver == nil {
+		h.PoolResolver = pool.NewResolver(&cfg.ModelPools)
+	} else {
+		h.PoolResolver.Reload(&cfg.ModelPools)
+	}
 }
 
 // UpdateKnowledgeManager refreshes the knowledge manager used for profile RAG.
 func (h *BaseAPIHandler) UpdateKnowledgeManager(manager *knowledge.Manager) {
 	h.KnowledgeManager = manager
+}
+
+// VirtualModels returns pool and cluster virtual models in OpenAI model listing format.
+// Callers (e.g., OpenAIModels, ClaudeModels) should append these to their model lists.
+func (h *BaseAPIHandler) VirtualModels() []map[string]any {
+	if h.PoolResolver == nil {
+		return nil
+	}
+	vms := h.PoolResolver.ListVirtualModels()
+	if len(vms) == 0 {
+		return nil
+	}
+	result := make([]map[string]any, 0, len(vms))
+	for _, vm := range vms {
+		m := map[string]any{
+			"id":       vm.ID,
+			"object":   "model",
+			"owned_by": "ai-gateway-" + vm.Type,
+		}
+		if vm.Description != "" {
+			m["description"] = vm.Description
+		}
+		result = append(result, m)
+	}
+	return result
 }
 
 // GetAlt extracts the 'alt' parameter from the request query string.
@@ -431,6 +468,11 @@ func appendAPIResponse(c *gin.Context, data []byte) {
 // ExecuteWithAuthManager executes a non-streaming request via the core auth manager.
 // This path is the only supported execution route.
 func (h *BaseAPIHandler) ExecuteWithAuthManager(ctx context.Context, handlerType, modelName string, rawJSON []byte, alt string) ([]byte, *interfaces.ErrorMessage) {
+	// Pool/cluster failover path: try members in priority order before standard routing.
+	if result, errMsg, handled := h.ExecuteWithPoolFailover(ctx, handlerType, modelName, rawJSON, alt); handled {
+		return result, errMsg
+	}
+
 	providers, normalizedModel, errMsg := h.getRequestDetails(modelName)
 	if errMsg != nil {
 		return nil, errMsg
@@ -470,6 +512,11 @@ func (h *BaseAPIHandler) ExecuteWithAuthManager(ctx context.Context, handlerType
 // ExecuteCountWithAuthManager executes a non-streaming request via the core auth manager.
 // This path is the only supported execution route.
 func (h *BaseAPIHandler) ExecuteCountWithAuthManager(ctx context.Context, handlerType, modelName string, rawJSON []byte, alt string) ([]byte, *interfaces.ErrorMessage) {
+	// Pool/cluster failover path: try members in priority order before standard routing.
+	if result, errMsg, handled := h.ExecuteWithPoolFailover(ctx, handlerType, modelName, rawJSON, alt); handled {
+		return result, errMsg
+	}
+
 	providers, normalizedModel, errMsg := h.getRequestDetails(modelName)
 	if errMsg != nil {
 		return nil, errMsg
@@ -509,6 +556,11 @@ func (h *BaseAPIHandler) ExecuteCountWithAuthManager(ctx context.Context, handle
 // ExecuteStreamWithAuthManager executes a streaming request via the core auth manager.
 // This path is the only supported execution route.
 func (h *BaseAPIHandler) ExecuteStreamWithAuthManager(ctx context.Context, handlerType, modelName string, rawJSON []byte, alt string) (<-chan []byte, <-chan *interfaces.ErrorMessage) {
+	// Pool/cluster failover path: try members in priority order before standard routing.
+	if dataChan, errChan, handled := h.ExecuteStreamWithPoolFailover(ctx, handlerType, modelName, rawJSON, alt); handled {
+		return dataChan, errChan
+	}
+
 	providers, normalizedModel, errMsg := h.getRequestDetails(modelName)
 	if errMsg != nil {
 		errChan := make(chan *interfaces.ErrorMessage, 1)
@@ -657,6 +709,27 @@ func (h *BaseAPIHandler) getRequestDetails(modelName string) (providers []string
 
 	parsed := thinking.ParseSuffix(resolvedModelName)
 	baseModel := strings.TrimSpace(parsed.ModelName)
+
+	// Pool/cluster resolution: if the model ID matches a pool or cluster,
+	// resolve it to the first concrete target's model and providers.
+	if h.PoolResolver != nil {
+		resolution := h.PoolResolver.Resolve(baseModel)
+		if resolution.Matched && len(resolution.Targets) > 0 {
+			// Use the first target (priority-based or first in config order).
+			// The conductor's existing multi-provider failover handles retries.
+			target := resolution.Targets[0]
+			resolvedModel := target.Model
+			if parsed.HasSuffix {
+				resolvedModel = fmt.Sprintf("%s(%s)", target.Model, parsed.RawSuffix)
+			}
+			if len(target.Providers) > 0 {
+				return target.Providers, resolvedModel, nil
+			}
+			// Fall through to normal provider lookup with the resolved model name
+			resolvedModelName = resolvedModel
+			baseModel = target.Model
+		}
+	}
 
 	providers = util.GetProviderName(baseModel)
 	// Fallback: if baseModel has no provider but differs from resolvedModelName,

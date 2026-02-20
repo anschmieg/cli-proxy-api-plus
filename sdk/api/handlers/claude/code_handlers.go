@@ -53,7 +53,12 @@ func (h *ClaudeCodeAPIHandler) HandlerType() string {
 func (h *ClaudeCodeAPIHandler) Models() []map[string]any {
 	// Get dynamic models from the global registry
 	modelRegistry := registry.GetGlobalRegistry()
-	return modelRegistry.GetAvailableModels("claude")
+	models := modelRegistry.GetAvailableModels("claude")
+	// Append virtual pool/cluster models
+	if vms := h.VirtualModels(); len(vms) > 0 {
+		models = append(models, vms...)
+	}
+	return models
 }
 
 // ClaudeMessages handles Claude-compatible streaming chat completions.
