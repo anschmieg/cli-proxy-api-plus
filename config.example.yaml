@@ -311,12 +311,6 @@ oauth-model-alias:
     - name: "kiro-claude-haiku-4-5"
       alias: "claude-haiku-4-5"
       fork: true
-    - name: "kiro-claude-opus-4-5"
-      alias: "claude-opus-4.5"
-      fork: true
-    - name: "kiro-claude-opus-4-5"
-      alias: "claude-opus-4-5"
-      fork: true
     - name: "kiro-claude-sonnet-4-5"
       alias: "claude-3-5-sonnet"
       fork: true
@@ -328,9 +322,6 @@ oauth-model-alias:
       fork: true
     - name: "kiro-claude-haiku-4-5"
       alias: "claude-3-5-haiku-20241022"
-      fork: true
-    - name: "kiro-claude-opus-4-5"
-      alias: "claude-3-opus-20240229"
       fork: true
 
 # OAuth provider excluded models
