@@ -80,6 +80,11 @@ func (e *OpenRouterExecutor) Execute(ctx context.Context, auth *cliproxyauth.Aut
 		}
 	}
 
+	// Strip the "openrouter/" prefix so the upstream API receives the bare model ID
+	// e.g. "openrouter/anthropic/claude-3-haiku" → "anthropic/claude-3-haiku"
+	req.Model = strings.TrimPrefix(req.Model, "openrouter/")
+	req.Payload = e.overrideModel(req.Payload, req.Model)
+
 	// Delegate to OpenAICompatExecutor
 	return e.OpenAICompatExecutor.Execute(ctx, auth, req, opts)
 }
@@ -101,6 +106,10 @@ func (e *OpenRouterExecutor) ExecuteStream(ctx context.Context, auth *cliproxyau
 			auth.Attributes["api_key"] = apiKey
 		}
 	}
+
+	// Strip the "openrouter/" prefix so the upstream API receives the bare model ID
+	req.Model = strings.TrimPrefix(req.Model, "openrouter/")
+	req.Payload = e.overrideModel(req.Payload, req.Model)
 
 	// Delegate to OpenAICompatExecutor
 	return e.OpenAICompatExecutor.ExecuteStream(ctx, auth, req, opts)
