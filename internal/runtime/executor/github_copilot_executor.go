@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strings"
 	"sync"
 	"time"
 
@@ -18,16 +17,13 @@ import (
 	cliproxyexecutor "github.com/router-for-me/CLIProxyAPI/v6/sdk/cliproxy/executor"
 	sdktranslator "github.com/router-for-me/CLIProxyAPI/v6/sdk/translator"
 	log "github.com/sirupsen/logrus"
-	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 )
 
 const (
 	githubCopilotBaseURL          = "https://api.githubcopilot.com"
-	githubModelsBaseURL           = "https://models.github.ai"
 	githubCopilotChatPath         = "/chat/completions"
 	githubCopilotResponsesPath    = "/responses"
-	githubModelsEmbeddingsPath    = "/inference/embeddings"
 	githubCopilotAuthType         = "github-copilot"
 	githubCopilotTokenCacheTTL = 25 * time.Minute
 	// tokenExpiryBuffer is the time before expiry when we should refresh the token.
@@ -102,27 +98,9 @@ func (e *GitHubCopilotExecutor) HttpRequest(ctx context.Context, auth *cliproxya
 
 // Execute handles non-streaming requests to GitHub Copilot.
 func (e *GitHubCopilotExecutor) Execute(ctx context.Context, auth *cliproxyauth.Auth, req cliproxyexecutor.Request, opts cliproxyexecutor.Options) (resp cliproxyexecutor.Response, err error) {
-	// Determine endpoint kind first to choose correct token
-	endpointKind := githubCopilotEndpointForModel(req.Model)
-
-	// For embeddings (GitHub Models), use the GitHub OAuth access token directly
-	// For chat/completions (GitHub Copilot), use the Copilot API token
-	var apiToken string
-	if endpointKind == githubEndpointEmbeddings {
-		// GitHub Models requires the original GitHub OAuth token
-		if auth == nil {
-			return resp, statusErr{code: http.StatusUnauthorized, msg: "missing auth"}
-		}
-		apiToken = metaStringValue(auth.Metadata, "access_token")
-		if apiToken == "" {
-			return resp, statusErr{code: http.StatusUnauthorized, msg: "missing github access token for embeddings"}
-		}
-	} else {
-		var errToken error
-		apiToken, errToken = e.ensureAPIToken(ctx, auth)
-		if errToken != nil {
-			return resp, errToken
-		}
+	apiToken, errToken := e.ensureAPIToken(ctx, auth)
+	if errToken != nil {
+		return resp, errToken
 	}
 
 	reporter := newUsageReporter(ctx, e.Identifier(), req.Model, auth)
@@ -146,24 +124,15 @@ func (e *GitHubCopilotExecutor) Execute(ctx context.Context, auth *cliproxyauth.
 	body, _ = sjson.SetBytes(body, "stream", false)
 
 	path := githubCopilotChatPath
-	baseURL := githubCopilotBaseURL
-	if endpointKind == githubEndpointEmbeddings {
-		path = githubModelsEmbeddingsPath
-		baseURL = githubModelsBaseURL
-	} else if useResponses {
+	if useResponses {
 		path = githubCopilotResponsesPath
 	}
-	url := baseURL + path
+	url := githubCopilotBaseURL + path
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
 		return resp, err
 	}
 	e.applyHeaders(httpReq, apiToken)
-	if endpointKind == githubEndpointEmbeddings {
-		// GitHub Models requires different headers
-		httpReq.Header.Set("Accept", "application/vnd.github+json")
-		httpReq.Header.Set("X-GitHub-Api-Version", "2022-11-28")
-	}
 
 	var authID, authLabel, authType, authValue string
 	if auth != nil {
@@ -229,14 +198,6 @@ func (e *GitHubCopilotExecutor) Execute(ctx context.Context, auth *cliproxyauth.
 
 // ExecuteStream handles streaming requests to GitHub Copilot.
 func (e *GitHubCopilotExecutor) ExecuteStream(ctx context.Context, auth *cliproxyauth.Auth, req cliproxyexecutor.Request, opts cliproxyexecutor.Options) (stream <-chan cliproxyexecutor.StreamChunk, err error) {
-	// Determine endpoint kind first to choose correct token
-	endpointKind := githubCopilotEndpointForModel(req.Model)
-
-	// Embeddings doesn't support streaming
-	if endpointKind == githubEndpointEmbeddings {
-		return nil, statusErr{code: http.StatusBadRequest, msg: "embeddings endpoint does not support streaming"}
-	}
-
 	apiToken, errToken := e.ensureAPIToken(ctx, auth)
 	if errToken != nil {
 		return nil, errToken
@@ -264,11 +225,6 @@ func (e *GitHubCopilotExecutor) ExecuteStream(ctx context.Context, auth *cliprox
 	// Enable stream options for usage stats in stream
 	if !useResponses {
 		body, _ = sjson.SetBytes(body, "stream_options.include_usage", true)
-	}
-
-	// Embeddings don't support streaming
-	if githubCopilotEndpointForModel(req.Model) == githubEndpointEmbeddings {
-		return nil, statusErr{code: http.StatusBadRequest, msg: "embeddings endpoint does not support streaming"}
 	}
 
 	path := githubCopilotChatPath
@@ -487,37 +443,13 @@ func (e *GitHubCopilotExecutor) applyHeaders(r *http.Request, apiToken string) {
 	r.Header.Set("X-Request-Id", uuid.NewString())
 }
 
-// normalizeModel rewrites embedding model aliases to the GitHub Models canonical id.
-func (e *GitHubCopilotExecutor) normalizeModel(model string, body []byte) []byte {
-	if githubCopilotEndpointForModel(model) != githubEndpointEmbeddings {
-		return body
-	}
-	current := strings.ToLower(strings.TrimSpace(gjson.GetBytes(body, "model").String()))
-	if current == "text-embedding-3-small" {
-		if updated, err := sjson.SetBytes(body, "model", "openai/text-embedding-3-small"); err == nil {
-			return updated
-		}
-	}
+// normalizeModel is a no-op as GitHub Copilot accepts model names directly.
+func (e *GitHubCopilotExecutor) normalizeModel(_ string, body []byte) []byte {
 	return body
 }
 
 func useGitHubCopilotResponsesEndpoint(sourceFormat sdktranslator.Format) bool {
 	return sourceFormat.String() == "openai-response"
-}
-
-type githubEndpointKind string
-
-const (
-	githubEndpointChat       githubEndpointKind = "chat"
-	githubEndpointEmbeddings githubEndpointKind = "embeddings"
-)
-
-func githubCopilotEndpointForModel(model string) githubEndpointKind {
-	m := strings.ToLower(strings.TrimSpace(model))
-	if strings.Contains(m, "embedding") {
-		return githubEndpointEmbeddings
-	}
-	return githubEndpointChat
 }
 
 // isHTTPSuccess checks if the status code indicates success (2xx).
