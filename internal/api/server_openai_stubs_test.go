@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func TestOpenAIEmbeddingsUnsupportedEndpoint(t *testing.T) {
+func TestOpenAIEmbeddingsRoutesThroughModelProviderSelection(t *testing.T) {
 	server := newTestServer(t)
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/embeddings", strings.NewReader(`{"model":"text-embedding-3-small","input":"hello"}`))
@@ -17,15 +17,15 @@ func TestOpenAIEmbeddingsUnsupportedEndpoint(t *testing.T) {
 	rr := httptest.NewRecorder()
 	server.engine.ServeHTTP(rr, req)
 
-	if rr.Code != http.StatusServiceUnavailable {
-		t.Fatalf("unexpected status code: got %d want %d; body=%s", rr.Code, http.StatusServiceUnavailable, rr.Body.String())
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("unexpected status code: got %d want %d; body=%s", rr.Code, http.StatusBadRequest, rr.Body.String())
 	}
 
 	body := rr.Body.String()
-	if !strings.Contains(body, "service_unavailable_error") {
-		t.Fatalf("expected service_unavailable_error error, got: %s", body)
+	if !strings.Contains(body, "invalid_request_error") {
+		t.Fatalf("expected invalid_request_error, got: %s", body)
 	}
-	if !strings.Contains(body, "Embedder not configured") {
-		t.Fatalf("expected Embedder not configured hint in body, got: %s", body)
+	if !strings.Contains(body, "unknown provider for model text-embedding-3-small") {
+		t.Fatalf("expected model provider selection error, got: %s", body)
 	}
 }

@@ -17,7 +17,6 @@ import (
 	. "github.com/router-for-me/CLIProxyAPI/v6/internal/constant"
 	"github.com/router-for-me/CLIProxyAPI/v6/internal/interfaces"
 	"github.com/router-for-me/CLIProxyAPI/v6/internal/registry"
-	"github.com/router-for-me/CLIProxyAPI/v6/internal/runtime/executor"
 	codexconverter "github.com/router-for-me/CLIProxyAPI/v6/internal/translator/codex/openai/chat-completions"
 	responsesconverter "github.com/router-for-me/CLIProxyAPI/v6/internal/translator/openai/openai/responses"
 	"github.com/router-for-me/CLIProxyAPI/v6/sdk/api/handlers"
@@ -202,83 +201,30 @@ func (h *OpenAIAPIHandler) Embeddings(c *gin.Context) {
 		return
 	}
 
-	modelName := gjson.GetBytes(rawJSON, "model").String()
-	input := gjson.GetBytes(rawJSON, "input")
-	var texts []string
-	if input.IsArray() {
-		input.ForEach(func(_, entry gjson.Result) bool {
-			texts = append(texts, entry.String())
-			return true
-		})
-	} else if input.Type == gjson.String {
-		texts = append(texts, input.String())
+	rawJSON, errMsg := h.ApplyProfileToPayload(c.Request.Context(), OpenAI, rawJSON)
+	if errMsg != nil {
+		h.WriteErrorResponse(c, errMsg)
+		return
 	}
 
-	if len(texts) == 0 {
+	modelName := gjson.GetBytes(rawJSON, "model").String()
+	if modelName == "" {
 		c.JSON(http.StatusBadRequest, handlers.ErrorResponse{
 			Error: handlers.ErrorDetail{
-				Message: "No input texts provided for embedding",
+				Message: "Model not specified",
 				Type:    "invalid_request_error",
 			},
 		})
 		return
 	}
 
-	if h.KnowledgeManager == nil || h.KnowledgeManager.GetEmbedder() == nil {
-		c.JSON(http.StatusServiceUnavailable, handlers.ErrorResponse{
-			Error: handlers.ErrorDetail{
-				Message: "Embedder not configured",
-				Type:    "service_unavailable_error",
-			},
-		})
+	response, errMsg := h.ExecuteWithAuthManager(c.Request.Context(), OpenAI, modelName, rawJSON, h.GetAlt(c))
+	if errMsg != nil {
+		h.WriteErrorResponse(c, errMsg)
 		return
 	}
 
-	embeddings, err := h.KnowledgeManager.GetEmbedder().Embed(c.Request.Context(), texts)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, handlers.ErrorResponse{
-			Error: handlers.ErrorDetail{
-				Message: fmt.Sprintf("Failed to generate embeddings: %v", err),
-				Type:    "internal_error",
-			},
-		})
-		return
-	}
-
-	data := make([]map[string]any, len(embeddings))
-	for i, emb := range embeddings {
-		float64Emb := make([]float64, len(emb))
-		for j, val := range emb {
-			float64Emb[j] = float64(val)
-		}
-		data[i] = map[string]any{
-			"object":    "embedding",
-			"embedding": float64Emb,
-			"index":     i,
-		}
-	}
-
-	tokenCount := 0
-	if h.KnowledgeManager != nil && h.KnowledgeManager.GetEmbedder() != nil {
-		if embModel := h.KnowledgeManager.GetEmbedder().GetModel(); embModel != "" {
-			if tokenizer, err := executor.GetTokenizer(embModel); err == nil {
-				for _, text := range texts {
-					if c, err := tokenizer.Count(text); err == nil {
-						tokenCount += c
-					}
-				}
-			}
-		}
-	}
-	c.JSON(http.StatusOK, gin.H{
-		"object": "list",
-		"data":   data,
-		"model":  modelName,
-		"usage": map[string]int{
-			"prompt_tokens":     tokenCount,
-			"total_tokens":      tokenCount,
-		},
-	})
+	c.Data(http.StatusOK, "application/json", response)
 }
 
 // Completions handles the /v1/completions endpoint.
