@@ -18,6 +18,7 @@ import (
 	cliproxyexecutor "github.com/router-for-me/CLIProxyAPI/v6/sdk/cliproxy/executor"
 	sdktranslator "github.com/router-for-me/CLIProxyAPI/v6/sdk/translator"
 	log "github.com/sirupsen/logrus"
+	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 )
 
@@ -458,8 +459,31 @@ func (e *GitHubCopilotExecutor) applyHeaders(r *http.Request, apiToken string) {
 	r.Header.Set("X-Vscode-User-Agent-Library-Version", copilotVSCodeUserAgentLibraryVersion)
 }
 
-// normalizeModel is a no-op as GitHub Copilot accepts model names directly.
-func (e *GitHubCopilotExecutor) normalizeModel(_ string, body []byte) []byte {
+// normalizeModel strips any provider prefix from the model name.
+// GitHub Copilot expects just the model name (e.g., "text-embedding-3-small"),
+// not prefixed forms like "github-copilot/text-embedding-3-small" or "openai/text-embedding-3-small".
+func (e *GitHubCopilotExecutor) normalizeModel(model string, body []byte) []byte {
+	currentModel := gjson.GetBytes(body, "model").String()
+	if currentModel == "" {
+		return body
+	}
+	
+	// Strip common prefixes
+	stripped := currentModel
+	prefixes := []string{"github-copilot/", "github_copilot/", "openai/"}
+	for _, prefix := range prefixes {
+		if strings.HasPrefix(strings.ToLower(stripped), strings.ToLower(prefix)) {
+			stripped = stripped[len(prefix):]
+			break
+		}
+	}
+	
+	if stripped != currentModel {
+		updated, err := sjson.SetBytes(body, "model", stripped)
+		if err == nil {
+			return updated
+		}
+	}
 	return body
 }
 
