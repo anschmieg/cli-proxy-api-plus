@@ -102,9 +102,27 @@ func (e *GitHubCopilotExecutor) HttpRequest(ctx context.Context, auth *cliproxya
 
 // Execute handles non-streaming requests to GitHub Copilot.
 func (e *GitHubCopilotExecutor) Execute(ctx context.Context, auth *cliproxyauth.Auth, req cliproxyexecutor.Request, opts cliproxyexecutor.Options) (resp cliproxyexecutor.Response, err error) {
-	apiToken, errToken := e.ensureAPIToken(ctx, auth)
-	if errToken != nil {
-		return resp, errToken
+	// Determine endpoint kind first to choose correct token
+	endpointKind := githubCopilotEndpointForModel(req.Model)
+
+	// For embeddings, use the GitHub OAuth access token directly
+	// For chat/completions, use the Copilot API token
+	var apiToken string
+	if endpointKind == githubEndpointEmbeddings {
+		// GitHub Models requires the original GitHub OAuth token
+		if auth == nil {
+			return resp, statusErr{code: http.StatusUnauthorized, msg: "missing auth"}
+		}
+		apiToken = metaStringValue(auth.Metadata, "access_token")
+		if apiToken == "" {
+			return resp, statusErr{code: http.StatusUnauthorized, msg: "missing github access token for embeddings"}
+		}
+	} else {
+		var errToken error
+		apiToken, errToken = e.ensureAPIToken(ctx, auth)
+		if errToken != nil {
+			return resp, errToken
+		}
 	}
 
 	reporter := newUsageReporter(ctx, e.Identifier(), req.Model, auth)
@@ -127,7 +145,6 @@ func (e *GitHubCopilotExecutor) Execute(ctx context.Context, auth *cliproxyauth.
 	body = applyPayloadConfigWithRoot(e.cfg, req.Model, to.String(), "", body, originalTranslated, requestedModel)
 	body, _ = sjson.SetBytes(body, "stream", false)
 
-	endpointKind := githubCopilotEndpointForModel(req.Model)
 	path := githubCopilotChatPath
 	baseURL := githubCopilotBaseURL
 	if endpointKind == githubEndpointEmbeddings {
@@ -210,6 +227,14 @@ func (e *GitHubCopilotExecutor) Execute(ctx context.Context, auth *cliproxyauth.
 
 // ExecuteStream handles streaming requests to GitHub Copilot.
 func (e *GitHubCopilotExecutor) ExecuteStream(ctx context.Context, auth *cliproxyauth.Auth, req cliproxyexecutor.Request, opts cliproxyexecutor.Options) (stream <-chan cliproxyexecutor.StreamChunk, err error) {
+	// Determine endpoint kind first to choose correct token
+	endpointKind := githubCopilotEndpointForModel(req.Model)
+
+	// Embeddings doesn't support streaming
+	if endpointKind == githubEndpointEmbeddings {
+		return nil, statusErr{code: http.StatusBadRequest, msg: "embeddings endpoint does not support streaming"}
+	}
+
 	apiToken, errToken := e.ensureAPIToken(ctx, auth)
 	if errToken != nil {
 		return nil, errToken
@@ -238,8 +263,6 @@ func (e *GitHubCopilotExecutor) ExecuteStream(ctx context.Context, auth *cliprox
 	if !useResponses {
 		body, _ = sjson.SetBytes(body, "stream_options.include_usage", true)
 	}
-
-	endpointKind := githubCopilotEndpointForModel(req.Model)
 	if endpointKind == githubEndpointEmbeddings {
 		return nil, statusErr{code: http.StatusBadRequest, msg: "embeddings endpoint does not support streaming"}
 	}
