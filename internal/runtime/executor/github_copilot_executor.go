@@ -34,11 +34,13 @@ const (
 	maxScannerBufferSize = 20_971_520
 
 	// Copilot API header values.
-	copilotUserAgent     = "GithubCopilot/1.388.0"
-	copilotEditorVersion = "vscode/1.108.0"
-	copilotPluginVersion = "copilot-chat/0.36.2"
-	copilotIntegrationID = "vscode-chat"
-	copilotOpenAIIntent  = "conversation-panel"
+	copilotUserAgent                    = "GitHubCopilotChat/0.26.7"
+	copilotEditorVersion                = "vscode/1.95.0"
+	copilotPluginVersion                = "copilot-chat/0.26.7"
+	copilotIntegrationID                = "vscode-chat"
+	copilotOpenAIIntent                 = "conversation-panel"
+	copilotGitHubAPIVersion             = "2025-04-01"
+	copilotVSCodeUserAgentLibraryVersion = "electron-fetch"
 )
 
 // GitHubCopilotExecutor handles requests to the GitHub Copilot API.
@@ -451,7 +453,9 @@ func (e *GitHubCopilotExecutor) applyHeaders(r *http.Request, apiToken string) {
 	r.Header.Set("Editor-Plugin-Version", copilotPluginVersion)
 	r.Header.Set("Openai-Intent", copilotOpenAIIntent)
 	r.Header.Set("Copilot-Integration-Id", copilotIntegrationID)
+	r.Header.Set("X-Github-Api-Version", copilotGitHubAPIVersion)
 	r.Header.Set("X-Request-Id", uuid.NewString())
+	r.Header.Set("X-Vscode-User-Agent-Library-Version", copilotVSCodeUserAgentLibraryVersion)
 }
 
 // normalizeModel is a no-op as GitHub Copilot accepts model names directly.
