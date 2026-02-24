@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -17,14 +18,17 @@ import (
 	cliproxyexecutor "github.com/router-for-me/CLIProxyAPI/v6/sdk/cliproxy/executor"
 	sdktranslator "github.com/router-for-me/CLIProxyAPI/v6/sdk/translator"
 	log "github.com/sirupsen/logrus"
+	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 )
 
 const (
-	githubCopilotBaseURL       = "https://api.githubcopilot.com"
-	githubCopilotChatPath      = "/chat/completions"
-	githubCopilotResponsesPath = "/responses"
-	githubCopilotAuthType      = "github-copilot"
+	githubCopilotBaseURL          = "https://api.githubcopilot.com"
+	githubModelsBaseURL           = "https://models.github.ai"
+	githubCopilotChatPath         = "/chat/completions"
+	githubCopilotResponsesPath    = "/responses"
+	githubModelsEmbeddingsPath    = "/inference/embeddings"
+	githubCopilotAuthType         = "github-copilot"
 	githubCopilotTokenCacheTTL = 25 * time.Minute
 	// tokenExpiryBuffer is the time before expiry when we should refresh the token.
 	tokenExpiryBuffer = 5 * time.Minute
@@ -123,16 +127,24 @@ func (e *GitHubCopilotExecutor) Execute(ctx context.Context, auth *cliproxyauth.
 	body = applyPayloadConfigWithRoot(e.cfg, req.Model, to.String(), "", body, originalTranslated, requestedModel)
 	body, _ = sjson.SetBytes(body, "stream", false)
 
+	endpointKind := githubCopilotEndpointForModel(req.Model)
 	path := githubCopilotChatPath
-	if useResponses {
+	baseURL := githubCopilotBaseURL
+	if endpointKind == githubEndpointEmbeddings {
+		path = githubModelsEmbeddingsPath
+		baseURL = githubModelsBaseURL
+	} else if useResponses {
 		path = githubCopilotResponsesPath
 	}
-	url := githubCopilotBaseURL + path
+	url := baseURL + path
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
 		return resp, err
 	}
 	e.applyHeaders(httpReq, apiToken)
+	if endpointKind == githubEndpointEmbeddings {
+		e.applyGitHubModelsHeaders(httpReq)
+	}
 
 	var authID, authLabel, authType, authValue string
 	if auth != nil {
@@ -227,6 +239,10 @@ func (e *GitHubCopilotExecutor) ExecuteStream(ctx context.Context, auth *cliprox
 		body, _ = sjson.SetBytes(body, "stream_options.include_usage", true)
 	}
 
+	endpointKind := githubCopilotEndpointForModel(req.Model)
+	if endpointKind == githubEndpointEmbeddings {
+		return nil, statusErr{code: http.StatusBadRequest, msg: "embeddings endpoint does not support streaming"}
+	}
 	path := githubCopilotChatPath
 	if useResponses {
 		path = githubCopilotResponsesPath
@@ -443,14 +459,42 @@ func (e *GitHubCopilotExecutor) applyHeaders(r *http.Request, apiToken string) {
 	r.Header.Set("X-Request-Id", uuid.NewString())
 }
 
-// normalizeModel is a no-op as GitHub Copilot accepts model names directly.
-// Model mapping should be done at the registry level if needed.
-func (e *GitHubCopilotExecutor) normalizeModel(_ string, body []byte) []byte {
+// normalizeModel rewrites embedding model aliases to the GitHub Models canonical id.
+func (e *GitHubCopilotExecutor) normalizeModel(model string, body []byte) []byte {
+	if githubCopilotEndpointForModel(model) != githubEndpointEmbeddings {
+		return body
+	}
+	current := strings.ToLower(strings.TrimSpace(gjson.GetBytes(body, "model").String()))
+	if current == "text-embedding-3-small" {
+		if updated, err := sjson.SetBytes(body, "model", "openai/text-embedding-3-small"); err == nil {
+			return updated
+		}
+	}
 	return body
 }
 
 func useGitHubCopilotResponsesEndpoint(sourceFormat sdktranslator.Format) bool {
 	return sourceFormat.String() == "openai-response"
+}
+
+type githubEndpointKind string
+
+const (
+	githubEndpointChat       githubEndpointKind = "chat"
+	githubEndpointEmbeddings githubEndpointKind = "embeddings"
+)
+
+func githubCopilotEndpointForModel(model string) githubEndpointKind {
+	m := strings.ToLower(strings.TrimSpace(model))
+	if strings.Contains(m, "embedding") {
+		return githubEndpointEmbeddings
+	}
+	return githubEndpointChat
+}
+
+func (e *GitHubCopilotExecutor) applyGitHubModelsHeaders(r *http.Request) {
+	r.Header.Set("Accept", "application/vnd.github+json")
+	r.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 }
 
 // isHTTPSuccess checks if the status code indicates success (2xx).

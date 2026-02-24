@@ -1026,6 +1026,30 @@ func GetGitHubCopilotModels() []*ModelInfo {
 	now := int64(1732752000) // 2024-11-27
 	return []*ModelInfo{
 		{
+			ID:                  "text-embedding-3-small",
+			Object:              "model",
+			Created:             now,
+			OwnedBy:             "github-copilot",
+			Type:                "github-copilot",
+			DisplayName:         "Text Embedding 3 Small",
+			Description:         "OpenAI text-embedding-3-small via GitHub Models",
+			ContextLength:       8191,
+			MaxCompletionTokens: 0,
+			SupportedEndpoints:  []string{"/embeddings"},
+		},
+		{
+			ID:                  "openai/text-embedding-3-small",
+			Object:              "model",
+			Created:             now,
+			OwnedBy:             "github-copilot",
+			Type:                "github-copilot",
+			DisplayName:         "OpenAI Text Embedding 3 Small",
+			Description:         "OpenAI text-embedding-3-small via GitHub Models",
+			ContextLength:       8191,
+			MaxCompletionTokens: 0,
+			SupportedEndpoints:  []string{"/embeddings"},
+		},
+		{
 			ID:                  "gpt-4.1",
 			Object:              "model",
 			Created:             now,
