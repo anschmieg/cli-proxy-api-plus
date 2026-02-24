@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -24,6 +25,7 @@ const (
 	githubCopilotBaseURL          = "https://api.githubcopilot.com"
 	githubCopilotChatPath         = "/chat/completions"
 	githubCopilotResponsesPath    = "/responses"
+	githubCopilotEmbeddingsPath   = "/embeddings"
 	githubCopilotAuthType         = "github-copilot"
 	githubCopilotTokenCacheTTL = 25 * time.Minute
 	// tokenExpiryBuffer is the time before expiry when we should refresh the token.
@@ -123,8 +125,12 @@ func (e *GitHubCopilotExecutor) Execute(ctx context.Context, auth *cliproxyauth.
 	body = applyPayloadConfigWithRoot(e.cfg, req.Model, to.String(), "", body, originalTranslated, requestedModel)
 	body, _ = sjson.SetBytes(body, "stream", false)
 
+	// Determine the correct endpoint based on model type
+	isEmbedding := isEmbeddingModel(req.Model)
 	path := githubCopilotChatPath
-	if useResponses {
+	if isEmbedding {
+		path = githubCopilotEmbeddingsPath
+	} else if useResponses {
 		path = githubCopilotResponsesPath
 	}
 	url := githubCopilotBaseURL + path
@@ -225,6 +231,11 @@ func (e *GitHubCopilotExecutor) ExecuteStream(ctx context.Context, auth *cliprox
 	// Enable stream options for usage stats in stream
 	if !useResponses {
 		body, _ = sjson.SetBytes(body, "stream_options.include_usage", true)
+	}
+
+	// Embeddings don't support streaming
+	if isEmbeddingModel(req.Model) {
+		return nil, statusErr{code: http.StatusBadRequest, msg: "embeddings endpoint does not support streaming"}
 	}
 
 	path := githubCopilotChatPath
@@ -450,6 +461,12 @@ func (e *GitHubCopilotExecutor) normalizeModel(_ string, body []byte) []byte {
 
 func useGitHubCopilotResponsesEndpoint(sourceFormat sdktranslator.Format) bool {
 	return sourceFormat.String() == "openai-response"
+}
+
+// isEmbeddingModel returns true if the model name indicates an embedding model.
+func isEmbeddingModel(model string) bool {
+	m := strings.ToLower(strings.TrimSpace(model))
+	return strings.Contains(m, "embedding") || strings.Contains(m, "text-embed")
 }
 
 // isHTTPSuccess checks if the status code indicates success (2xx).
