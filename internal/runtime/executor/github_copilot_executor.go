@@ -24,9 +24,10 @@ import (
 
 const (
 	githubCopilotBaseURL          = "https://api.githubcopilot.com"
+	githubModelsBaseURL           = "https://models.github.ai"
 	githubCopilotChatPath         = "/chat/completions"
 	githubCopilotResponsesPath    = "/responses"
-	githubCopilotEmbeddingsPath   = "/embeddings"
+	githubModelsEmbeddingsPath    = "/inference/embeddings"
 	githubCopilotAuthType         = "github-copilot"
 	githubCopilotTokenCacheTTL = 25 * time.Minute
 	// tokenExpiryBuffer is the time before expiry when we should refresh the token.
@@ -101,9 +102,27 @@ func (e *GitHubCopilotExecutor) HttpRequest(ctx context.Context, auth *cliproxya
 
 // Execute handles non-streaming requests to GitHub Copilot.
 func (e *GitHubCopilotExecutor) Execute(ctx context.Context, auth *cliproxyauth.Auth, req cliproxyexecutor.Request, opts cliproxyexecutor.Options) (resp cliproxyexecutor.Response, err error) {
-	apiToken, errToken := e.ensureAPIToken(ctx, auth)
-	if errToken != nil {
-		return resp, errToken
+	// Determine endpoint kind first to choose correct token
+	endpointKind := githubCopilotEndpointForModel(req.Model)
+
+	// For embeddings (GitHub Models), use the GitHub OAuth access token directly
+	// For chat/completions (GitHub Copilot), use the Copilot API token
+	var apiToken string
+	if endpointKind == githubEndpointEmbeddings {
+		// GitHub Models requires the original GitHub OAuth token
+		if auth == nil {
+			return resp, statusErr{code: http.StatusUnauthorized, msg: "missing auth"}
+		}
+		apiToken = metaStringValue(auth.Metadata, "access_token")
+		if apiToken == "" {
+			return resp, statusErr{code: http.StatusUnauthorized, msg: "missing github access token for embeddings"}
+		}
+	} else {
+		var errToken error
+		apiToken, errToken = e.ensureAPIToken(ctx, auth)
+		if errToken != nil {
+			return resp, errToken
+		}
 	}
 
 	reporter := newUsageReporter(ctx, e.Identifier(), req.Model, auth)
@@ -126,19 +145,25 @@ func (e *GitHubCopilotExecutor) Execute(ctx context.Context, auth *cliproxyauth.
 	body = applyPayloadConfigWithRoot(e.cfg, req.Model, to.String(), "", body, originalTranslated, requestedModel)
 	body, _ = sjson.SetBytes(body, "stream", false)
 
-	endpointKind := githubCopilotEndpointForModel(req.Model)
 	path := githubCopilotChatPath
+	baseURL := githubCopilotBaseURL
 	if endpointKind == githubEndpointEmbeddings {
-		path = githubCopilotEmbeddingsPath
+		path = githubModelsEmbeddingsPath
+		baseURL = githubModelsBaseURL
 	} else if useResponses {
 		path = githubCopilotResponsesPath
 	}
-	url := githubCopilotBaseURL + path
+	url := baseURL + path
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
 		return resp, err
 	}
 	e.applyHeaders(httpReq, apiToken)
+	if endpointKind == githubEndpointEmbeddings {
+		// GitHub Models requires different headers
+		httpReq.Header.Set("Accept", "application/vnd.github+json")
+		httpReq.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+	}
 
 	var authID, authLabel, authType, authValue string
 	if auth != nil {
